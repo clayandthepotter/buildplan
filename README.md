@@ -4,7 +4,13 @@
 
 ## Overview
 
-BuildPlan is an all-in-one DevOps and Project Management automation platform that eliminates the tedious overhead of managing software development projects. It automatically translates stakeholder requests into execution plans, assigns work to the appropriate team members (human or AI), manages dependencies and timelines, and keeps documentation up-to-date throughout the project lifecycle.
+BuildPlan is a **multi-tenant SaaS platform** designed to scale to tens of thousands of users across thousands of organizations. It's an all-in-one DevOps and Project Management automation platform that eliminates the tedious overhead of managing software development projects. It automatically translates stakeholder requests into execution plans, assigns work to the appropriate team members (human or AI), manages dependencies and timelines, and keeps documentation up-to-date throughout the project lifecycle.
+
+### Scale & Architecture
+- **Multi-tenant**: Supports thousands of unique organizations/workspaces/companies
+- **Scalable**: Designed to handle 10,000+ concurrent users
+- **Isolated**: Complete data isolation between organizations
+- **Enterprise-ready**: Built for security, compliance, and reliability at scale
 
 ## The Problem
 
@@ -92,12 +98,16 @@ BuildPlan provides a seamless, autopilot experience:
 
 ## Technology Stack
 
-- **Backend**: Node.js/TypeScript
+- **Backend**: Node.js/TypeScript with horizontally scalable microservices
 - **API**: REST with comprehensive OpenAPI documentation
-- **Database**: PostgreSQL with Prisma ORM
-- **Frontend**: Next.js (planned)
-- **Integration**: GitHub Apps API
+- **Database**: PostgreSQL with Prisma ORM (tenant isolation via row-level security)
+- **Caching**: Redis for session management and real-time features
+- **Message Queue**: Bull/BullMQ for background job processing
+- **Frontend**: Next.js with server-side rendering
+- **Integration**: GitHub Apps API (per-tenant installations)
 - **AI Orchestration**: Custom agent framework with structured outputs
+- **Infrastructure**: Containerized deployment (Docker/Kubernetes ready)
+- **Observability**: Structured logging, metrics, and distributed tracing
 
 ## Project Structure
 
@@ -169,13 +179,69 @@ All documentation in BuildPlan is:
 - **Versioned**: Changes tracked with full audit trail
 - **Accessible**: Written in plain language for non-technical stakeholders
 
+## Multi-Tenant Architecture
+
+### Organization Management
+- **Workspace Isolation**: Complete data separation between organizations
+- **Multi-org Users**: Users can belong to multiple organizations
+- **Role-Based Access**: Fine-grained permissions per organization
+- **Team Management**: Invite members, assign roles, manage access
+
+### Subscription Tiers
+
+#### Free Tier
+- 1 workspace
+- 5 team members
+- 10 requests per month
+- Community support
+- Core agents included
+
+#### Pro Tier
+- Unlimited workspaces
+- 50 team members
+- 500 requests per month
+- Email support
+- All agents + advanced features
+- Priority queue processing
+
+#### Enterprise Tier
+- Unlimited team members
+- Unlimited requests
+- 99.9% SLA guarantee
+- Dedicated support + CSM
+- SSO (SAML/OAuth)
+- Advanced security features
+- Custom integrations
+- Dedicated infrastructure option
+
+### Usage & Quotas
+- **Soft Limits**: Grace period before enforcement
+- **Usage Dashboard**: Real-time consumption metrics
+- **Automatic Notifications**: Alerts at 75%, 90%, 100% usage
+- **Easy Upgrades**: One-click tier changes
+
 ## Security & Compliance
 
-- Branch protections enforced (no direct commits to main)
-- All agent actions logged with full audit trail
-- Human approval required for sensitive operations
-- Role-based access control
-- Secrets managed securely via environment variables
+### Data Security
+- **Tenant Isolation**: Row-level security (RLS) in PostgreSQL
+- **Encryption**: Data encrypted at rest and in transit (TLS 1.3)
+- **Secrets Management**: Vault/AWS Secrets Manager for sensitive data
+- **Branch Protections**: No direct commits to main
+- **Audit Trail**: Immutable logs of all actions per organization
+
+### Access Control
+- **Multi-factor Authentication**: Optional 2FA for all users
+- **Role-Based Access Control**: Granular permissions system
+- **SSO Support**: SAML and OAuth for enterprise customers
+- **Session Management**: Secure JWT-based authentication
+- **API Keys**: Scoped API tokens for programmatic access
+
+### Compliance
+- **GDPR Ready**: Data export, deletion, and consent management
+- **SOC 2 Type II**: Security controls and audit readiness
+- **Data Residency**: Support for region-specific deployments
+- **Retention Policies**: Configurable per-tenant data retention
+- **Audit Logging**: Complete trail for compliance reporting
 
 ## Roadmap
 

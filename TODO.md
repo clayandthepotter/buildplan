@@ -19,10 +19,74 @@
 ---
 
 ### Task: Define Database Schema with Prisma
-**Description**: Create comprehensive Prisma schema for all core entities (Workspace, User, Request, Plan, Milestone, Task, ProofItem, AgentRun, AuditLog) and documentation entities (DocPack, DocSection, DocVersion, StalenessSignal).
+**Description**: Create comprehensive Prisma schema for all core entities including multi-tenant support (Organization, OrganizationMember, Subscription, User, Request, Plan, Milestone, Task, ProofItem, AgentRun, AuditLog) and documentation entities (DocPack, DocSection, DocVersion, StalenessSignal). Include organization_id foreign keys on all tenant-scoped tables.
 
 **Priority**: High  
 **Complexity**: High
+
+---
+
+### Task: Implement Row-Level Security (RLS) Policies
+**Description**: Set up PostgreSQL row-level security policies for all multi-tenant tables to enforce automatic tenant isolation. Configure session variables and test cross-tenant access prevention.
+
+**Priority**: Critical  
+**Complexity**: Medium
+
+---
+
+### Task: Build Authentication System
+**Description**: Implement user authentication with JWT/session management, multi-organization support, organization context switching, and password reset flows.
+
+**Priority**: High  
+**Complexity**: High
+
+---
+
+### Task: Create Organization Management
+**Description**: Build organization CRUD operations, member invitation system, role-based access control (RBAC), and organization settings management.
+
+**Priority**: High  
+**Complexity**: High
+
+---
+
+### Task: Implement Subscription & Billing System
+**Description**: Integrate Stripe/payment provider, implement tiered subscription plans (Free/Pro/Enterprise), usage tracking, quota enforcement, and billing webhooks.
+
+**Priority**: High  
+**Complexity**: Very High
+
+---
+
+### Task: Set Up Redis Caching Layer
+**Description**: Configure Redis for session storage, rate limiting, pub/sub for real-time features, and frequently accessed data caching.
+
+**Priority**: High  
+**Complexity**: Medium
+
+---
+
+### Task: Implement Job Queue System
+**Description**: Set up Bull/BullMQ for background job processing with per-tenant queue isolation, priority queues for enterprise tier, and job retry logic.
+
+**Priority**: High  
+**Complexity**: High
+
+---
+
+### Task: Build Rate Limiting System
+**Description**: Implement per-tenant API rate limiting stored in Redis with different limits per subscription tier and rate limit headers in responses.
+
+**Priority**: Medium  
+**Complexity**: Medium
+
+---
+
+### Task: Create Usage Tracking System
+**Description**: Build system to track requests created, agent compute time, storage used, API calls, and GitHub operations per organization for billing and quota enforcement.
+
+**Priority**: High  
+**Complexity**: Medium
 
 ---
 

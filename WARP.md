@@ -1,7 +1,15 @@
 # BuildPlan Development Log
 
 ## Project Overview
-BuildPlan is an all-in-one DevOps and Project Management automation platform designed to eliminate the tedious overhead of managing software development projects. The system automatically translates stakeholder requests into execution plans, assigns work to appropriate team members (human or AI), manages dependencies and timelines, and keeps documentation synchronized with project state.
+BuildPlan is a **multi-tenant SaaS platform** designed to scale to tens of thousands of users across thousands of organizations. It's an all-in-one DevOps and Project Management automation platform that eliminates the tedious overhead of managing software development projects. The system automatically translates stakeholder requests into execution plans, assigns work to appropriate team members (human or AI), manages dependencies and timelines, and keeps documentation synchronized with project state.
+
+### Multi-Tenant Architecture Requirements
+- Support for 10,000+ concurrent users
+- Thousands of unique organizations/workspaces/companies
+- Complete data isolation between tenants
+- Per-tenant GitHub App installations
+- Scalable infrastructure with horizontal scaling
+- Enterprise-grade security and compliance
 
 ## Initial Setup (2026-02-02)
 
@@ -40,12 +48,16 @@ The system ships with pre-configured AI agents that handle standard PM and devel
 ### Technical Architecture Decisions
 
 #### Technology Stack
-- **Backend**: Node.js/TypeScript for maintainability and ecosystem
-- **API**: REST with OpenAPI documentation
-- **Database**: PostgreSQL + Prisma ORM
-- **Frontend**: Next.js (planned)
-- **GitHub Integration**: GitHub Apps API for secure, scoped access
-- **Agent Framework**: Custom orchestration with structured outputs
+- **Backend**: Node.js/TypeScript with microservices architecture
+- **API**: REST with OpenAPI documentation, rate limiting, and API versioning
+- **Database**: PostgreSQL + Prisma ORM with row-level security for tenant isolation
+- **Caching**: Redis for sessions, rate limiting, and real-time pub/sub
+- **Job Queue**: Bull/BullMQ for background processing and agent orchestration
+- **Frontend**: Next.js with SSR for performance and SEO
+- **GitHub Integration**: GitHub Apps API with per-tenant installations
+- **Agent Framework**: Custom orchestration with structured outputs and job queuing
+- **Infrastructure**: Docker containers, Kubernetes-ready for horizontal scaling
+- **Observability**: Structured logging (Winston/Pino), Prometheus metrics, OpenTelemetry tracing
 
 #### GitHub Integration Strategy
 - Agents work via branch → commit → PR workflow
@@ -106,6 +118,93 @@ The first implemented component provides GitHub repository operations for AI age
 - Unified diff support enables agent code editing workflows
 - Atomic commits ensure consistency
 
+## Multi-Tenant Architecture
+
+### Tenant Isolation Strategy
+**Row-Level Security (RLS)**: Primary isolation mechanism
+- All core tables include `organization_id` foreign key
+- PostgreSQL RLS policies enforce automatic filtering
+- Application sets `app.current_organization_id` session variable
+- Eliminates accidental cross-tenant data leakage
+
+**Schema Isolation** (Future consideration for enterprise tier):
+- Dedicated schemas per large tenant
+- Better for regulatory compliance and data residency
+- Enables per-tenant backup/restore
+
+### Data Model Tenancy
+Every multi-tenant table follows this pattern:
+```sql
+CREATE TABLE requests (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  -- other columns
+);
+
+CREATE POLICY tenant_isolation ON requests
+  USING (organization_id = current_setting('app.current_organization_id')::uuid);
+```
+
+### Scaling Considerations
+
+#### Horizontal Scaling
+- **Stateless API servers**: Scale web tier independently
+- **Connection pooling**: PgBouncer for efficient database connections
+- **Background workers**: Separate worker pools for agent jobs
+- **Read replicas**: Route read-heavy queries to replicas
+
+#### Performance at Scale
+- **Indexing strategy**: Composite indexes on (organization_id, ...)
+- **Query optimization**: Ensure all queries include organization_id filter
+- **Partitioning**: Consider table partitioning for high-volume tenants
+- **Caching**: Redis for frequently accessed data (workspace settings, user sessions)
+
+#### Queue Architecture
+- **Agent jobs**: Isolated queues per tenant (prevents noisy neighbor)
+- **Priority queues**: Enterprise tier gets dedicated high-priority workers
+- **Rate limiting**: Per-tenant API rate limits (stored in Redis)
+- **Job retries**: Exponential backoff with dead letter queue
+
+### Security & Compliance
+
+#### Authentication & Authorization
+- **Multi-org support**: Users can belong to multiple organizations
+- **Role-based access control (RBAC)**: Per-organization role assignments
+- **Session management**: Organization context stored in JWT/session
+- **SSO support**: Per-tenant SAML/OAuth configuration (enterprise)
+
+#### Data Security
+- **Encryption at rest**: Database-level encryption
+- **Encryption in transit**: TLS 1.3 for all connections
+- **Secrets management**: Vault/AWS Secrets Manager for GitHub tokens
+- **Audit logging**: Immutable audit trail per organization
+
+#### Compliance Readiness
+- **Data residency**: Support for region-specific deployments
+- **GDPR compliance**: Data export, deletion, and consent management
+- **SOC 2 Type II**: Audit trail, access controls, incident response
+- **Data retention**: Configurable per-tenant retention policies
+
+### Subscription & Billing
+
+#### Tier Structure
+- **Free Tier**: 1 workspace, 5 users, 10 requests/month, community agents
+- **Pro Tier**: Unlimited workspaces, 50 users, 500 requests/month, all agents
+- **Enterprise Tier**: Unlimited users, unlimited requests, SLA, SSO, dedicated support
+
+#### Usage Tracking
+- Requests created (per month)
+- Agent compute time (minutes)
+- Storage used (GB)
+- API calls (per day)
+- GitHub operations (commits, PRs)
+
+#### Quota Enforcement
+- Soft limits with grace period
+- Hard limits at tier boundaries
+- Usage notifications at 75%, 90%, 100%
+- Automatic upgrades suggested
+
 ## Key Design Principles
 
 ### Definition of Ready
@@ -152,6 +251,13 @@ Required before release:
 - **DocSection**: Individual documentation segments with sources
 - **DocVersion**: Immutable snapshots for versioning
 - **StalenessSignal**: Triggers for doc regeneration
+
+### Multi-Tenant Entities
+- **Organization**: Top-level tenant entity with subscription, settings, limits
+- **OrganizationMember**: User membership with roles per organization
+- **Subscription**: Billing, plan limits, feature flags per organization
+- **Usage**: Metrics tracking for billing and quota enforcement
+- **TenantSettings**: Per-tenant configuration and customizations
 
 ## MVP Scope
 
