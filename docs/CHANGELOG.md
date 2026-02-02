@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Recent Commits
+- feat: Add auto-documentation pipeline (d20265e)
+- Add comprehensive multi-tenant architecture documentation (fd42ce2)
+- Add multi-tenant SaaS architecture documentation (497ee76)
+
+
 ### Added
 - Initial project structure and documentation
 - Multi-tenant SaaS architecture design
