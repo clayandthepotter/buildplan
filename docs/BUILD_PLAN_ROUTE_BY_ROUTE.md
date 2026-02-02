@@ -2,7 +2,19 @@
 
 **Philosophy**: Build like a house - foundation first, then tackle each room systematically.  
 **Approach**: UI-first development - see what users need, then build backend to support it.  
-**Organization**: Group work by route/page, complete each fully before moving to next.
+**Organization**: Group work by route/page, complete each fully before moving to next.  
+**Workforce**: AI agents execute, Human Executive approves milestones.
+
+## 🤖 AI Agent Responsibilities
+
+See `AI_WORKFORCE_SYSTEM.md` for complete agent system prompts.
+
+- **Technical Architect Agent**: Design all routes, API contracts, UI wireframes
+- **Backend Engineer Agent**: Implement Express.js APIs, Prisma queries, tests
+- **Frontend Engineer Agent**: Build Next.js components, forms, connect to APIs
+- **DevOps Engineer Agent**: Database migrations, RLS policies, deployments
+- **QA Engineer Agent**: Test everything, verify security, document bugs
+- **Documentation Agent**: Update API.md, CHANGELOG.md, user guides
 
 ---
 

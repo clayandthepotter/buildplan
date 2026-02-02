@@ -115,8 +115,21 @@ BuildPlan provides a seamless, autopilot experience:
 buildplan/
 ├── README.md              # This file
 ├── WARP.md                # Project development log
-├── TODO.md                # Task tracking
+├── TODO.md                # Legacy task tracking (see /tasks instead)
 ├── docs/                  # Additional documentation
+│   ├── AI_WORKFORCE_SYSTEM.md    # AI team structure & SDLC
+│   ├── AI_TEAM_PROTOCOL.md       # Self-managing AI team
+│   ├── PM_AGENT_PROMPT.md        # PM Agent instructions
+│   └── BUILD_PLAN_ROUTE_BY_ROUTE.md  # Implementation plan
+├── tasks/                 # Task management system
+│   ├── README.md          # Task system documentation
+│   ├── inbox/             # New tasks
+│   ├── backlog/           # Planned tasks
+│   ├── in-progress/       # Active work
+│   ├── review/            # Awaiting approval
+│   ├── completed/         # Done
+│   └── templates/         # Task templates
+├── standup/               # Daily standup reports
 ├── github-bridge/         # GitHub integration service
 │   ├── src/
 │   │   ├── index.ts       # Main server
