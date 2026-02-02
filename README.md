@@ -245,8 +245,24 @@ All documentation in BuildPlan is:
 
 ## Roadmap
 
-### MVP (V1)
+### Implementation Build Plan
+
+A comprehensive 16-week implementation plan has been created with 7 phases:
+
+1. **Phase 1: Foundation & Infrastructure** (Weeks 1-3)
+2. **Phase 2: Authentication & Organization Management** (Weeks 4-5)
+3. **Phase 3: Request Intake & Translation Layer** (Weeks 6-8)
+4. **Phase 4: Workflow Engine & Agent Framework** (Weeks 9-11)
+5. **Phase 5: GitHub Integration** (Week 12)
+6. **Phase 6: Frontend & User Experience** (Weeks 13-15)
+7. **Phase 7: Polish & MVP Launch** (Week 16)
+
+📋 **[View Complete Build Plan](https://github.com/clayandthepotter/buildplan/tree/main#plans)** in the Warp Plans section.
+
+### MVP (V1) - Target: 16 Weeks
 - [x] Project specification and architecture
+- [x] Multi-tenant architecture design
+- [x] Auto-documentation pipeline
 - [ ] Request intake wizard
 - [ ] Translation layer (scope contract generation)
 - [ ] Built-in workflow engine
