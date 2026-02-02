@@ -1,0 +1,341 @@
+name: Auto-Documentation Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-changelog:
+    name: Update CHANGELOG.md
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract commit messages since last release
+        id: commits
+        run: |
+          # Get the latest tag or use first commit if no tags exist
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          
+          # Get commit messages since last tag
+          COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" | grep -v "Merge pull request" | head -20)
+          echo "$COMMITS" > commits.txt
+          cat commits.txt
+      
+      - name: Update CHANGELOG.md
+        run: |
+          # Get current date
+          DATE=$(date +%Y-%m-%d)
+          
+          # Check if there are commits to add
+          if [ -s commits.txt ]; then
+            # Read commits
+            COMMITS=$(cat commits.txt)
+            
+            # Create temp file with new unreleased section
+            cat > temp_changelog.md << EOF
+          # Changelog
+          
+          All notable changes to the BuildPlan project will be documented in this file.
+          
+          The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+          and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+          
+          ## [Unreleased]
+          
+          ### Recent Commits
+          $COMMITS
+          
+          EOF
+            
+            # Append rest of changelog (skip first 8 lines which is the header and unreleased section)
+            tail -n +9 docs/CHANGELOG.md >> temp_changelog.md
+            
+            # Replace original
+            mv temp_changelog.md docs/CHANGELOG.md
+            
+            echo "✅ CHANGELOG.md updated with latest commits"
+          else
+            echo "ℹ️  No new commits to add to changelog"
+          fi
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet docs/CHANGELOG.md; then
+            echo "No changes to commit"
+          else
+            git add docs/CHANGELOG.md
+            git commit -m "docs: Auto-update CHANGELOG.md [skip ci]"
+            git push
+            echo "✅ CHANGELOG.md committed and pushed"
+          fi
+
+  update-api-docs:
+    name: Update API.md from code
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Check for API route files
+        id: check_routes
+        run: |
+          if [ -d "src/routes" ] || [ -d "api/routes" ]; then
+            echo "has_routes=true" >> $GITHUB_OUTPUT
+            echo "✅ API routes found"
+          else
+            echo "has_routes=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  No API routes yet - using template"
+          fi
+      
+      - name: Extract endpoints from code (when implemented)
+        if: steps.check_routes.outputs.has_routes == 'true'
+        run: |
+          echo "TODO: Extract endpoints from route files"
+          # This will be implemented when we have actual route files
+          # For now, we keep the template API.md
+      
+      - name: Update API.md metadata
+        run: |
+          # Update the "Last Updated" timestamp in API.md
+          DATE=$(date +%Y-%m-%d)
+          sed -i "s/\*\*Last Updated\*\*:.*/\*\*Last Updated\*\*: $DATE/" docs/API.md
+          echo "✅ API.md metadata updated"
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet docs/API.md; then
+            echo "No changes to commit"
+          else
+            git add docs/API.md
+            git commit -m "docs: Auto-update API.md metadata [skip ci]"
+            git push
+            echo "✅ API.md committed and pushed"
+          fi
+
+  update-architecture:
+    name: Update ARCHITECTURE.md
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Check for architecture changes
+        id: arch_changes
+        run: |
+          # Check if there were changes to key architecture files
+          ARCH_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '(prisma/schema\.prisma|src/.*\.ts|package\.json|docker|\.env\.example)' || echo "")
+          
+          if [ -n "$ARCH_FILES" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changed files: $ARCH_FILES"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No architecture-related changes"
+          fi
+      
+      - name: Update ARCHITECTURE.md metadata
+        if: steps.arch_changes.outputs.has_changes == 'true'
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          
+          # Update timestamp at bottom of file
+          sed -i "s/\*\*Last Updated\*\*:.*/\*\*Last Updated\*\*: $DATE/" docs/ARCHITECTURE.md
+          
+          echo "✅ ARCHITECTURE.md metadata updated"
+      
+      - name: Generate architecture insights
+        if: steps.arch_changes.outputs.has_changes == 'true'
+        run: |
+          # Count key metrics
+          if [ -f "prisma/schema.prisma" ]; then
+            MODELS=$(grep -c "^model " prisma/schema.prisma || echo "0")
+            echo "Prisma models: $MODELS"
+          fi
+          
+          if [ -d "src" ]; then
+            TS_FILES=$(find src -name "*.ts" | wc -l)
+            echo "TypeScript files: $TS_FILES"
+          fi
+      
+      - name: Commit changes
+        if: steps.arch_changes.outputs.has_changes == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet docs/ARCHITECTURE.md; then
+            echo "No changes to commit"
+          else
+            git add docs/ARCHITECTURE.md
+            git commit -m "docs: Auto-update ARCHITECTURE.md [skip ci]"
+            git push
+            echo "✅ ARCHITECTURE.md committed and pushed"
+          fi
+
+  validate-docs:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Check documentation files exist
+        run: |
+          echo "Checking required documentation files..."
+          
+          REQUIRED_DOCS=(
+            "README.md"
+            "docs/CHANGELOG.md"
+            "docs/API.md"
+            "docs/ARCHITECTURE.md"
+            "WARP.md"
+            "TODO.md"
+          )
+          
+          MISSING=0
+          for doc in "${REQUIRED_DOCS[@]}"; do
+            if [ ! -f "$doc" ]; then
+              echo "❌ Missing: $doc"
+              MISSING=$((MISSING + 1))
+            else
+              echo "✅ Found: $doc"
+            fi
+          done
+          
+          if [ $MISSING -gt 0 ]; then
+            echo "❌ $MISSING required documentation file(s) missing"
+            exit 1
+          else
+            echo "✅ All required documentation files present"
+          fi
+      
+      - name: Validate markdown formatting
+        run: |
+          echo "Validating markdown files..."
+          
+          # Check for broken links (basic check)
+          for file in README.md docs/*.md *.md; do
+            if [ -f "$file" ]; then
+              echo "Checking $file..."
+              # Simple validation: ensure file isn't empty and has proper line endings
+              if [ ! -s "$file" ]; then
+                echo "❌ $file is empty"
+                exit 1
+              fi
+            fi
+          done
+          
+          echo "✅ Markdown validation passed"
+      
+      - name: Check for TODO markers in code
+        run: |
+          echo "Scanning for TODO/FIXME markers..."
+          
+          if [ -d "src" ]; then
+            TODOS=$(grep -r "TODO\|FIXME" src/ --include="*.ts" --include="*.js" || echo "")
+            
+            if [ -n "$TODOS" ]; then
+              echo "⚠️  Found TODO/FIXME markers in code:"
+              echo "$TODOS"
+              echo ""
+              echo "💡 Consider adding these to TODO.md"
+            else
+              echo "✅ No TODO/FIXME markers found"
+            fi
+          fi
+
+  sync-to-warp:
+    name: Sync changes to WARP.md
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Generate development log entry
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          COMMIT_HASH=$(git log -1 --pretty=format:"%h")
+          
+          # Extract changed files
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | head -10)
+          
+          # Create log entry
+          cat > log_entry.md << EOF
+          
+          ## Update - $DATE
+          
+          **Commit**: $COMMIT_HASH  
+          **Message**: $COMMIT_MSG
+          
+          **Files Changed**:
+          $CHANGED_FILES
+          
+          EOF
+          
+          cat log_entry.md
+      
+      - name: Append to WARP.md
+        run: |
+          # Append new entry before the footer
+          sed -i '/^---$/i\\'$'\n'"$(cat log_entry.md)" WARP.md
+          
+          echo "✅ WARP.md updated with latest changes"
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet WARP.md; then
+            echo "No changes to commit"
+          else
+            git add WARP.md
+            git commit -m "docs: Auto-update WARP.md development log [skip ci]"
+            git push
+            echo "✅ WARP.md committed and pushed"
+          fi
