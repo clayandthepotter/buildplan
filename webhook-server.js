@@ -40,7 +40,15 @@ function verifySignature(req) {
   const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
   const digest = 'sha256=' + hmac.update(req.rawBody).digest('hex');
   
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature, 'utf8'),
+      Buffer.from(digest, 'utf8')
+    );
+  } catch (error) {
+    console.error('Signature verification error:', error.message);
+    return false;
+  }
 }
 
 /**
