@@ -120,8 +120,17 @@ Start generating now:`;
     let match;
 
     while ((match = fileRegex.exec(generated)) !== null) {
-      const filePath = match[1].trim();
+      let filePath = match[1].trim();
       const content = match[2].trim();
+      
+      // Normalize path: remove leading slash, ensure forward slashes
+      filePath = filePath.replace(/^[\\/]+/, '').replace(/\\/g, '/');
+      
+      // Skip empty content
+      if (!content) {
+        logger.warn(`${this.role}: Skipping empty file: ${filePath}`);
+        continue;
+      }
       
       files.push({
         path: filePath,
@@ -136,13 +145,19 @@ Start generating now:`;
       let index = 0;
 
       while ((blockMatch = codeBlockRegex.exec(generated)) !== null) {
-        files.push({
-          path: `generated/code-${index++}.js`,
-          content: blockMatch[1].trim()
-        });
+        const content = blockMatch[1].trim();
+        if (content) {
+          files.push({
+            path: `packages/api/src/generated/code-${index++}.js`,
+            content: content
+          });
+        }
       }
     }
 
+    // Log files for debugging
+    logger.info(`${this.role}: Parsed ${files.length} files: ${files.map(f => f.path).join(', ')}`);
+    
     return files;
   }
 

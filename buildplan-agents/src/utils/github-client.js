@@ -107,6 +107,9 @@ class GitHubClient {
       );
 
       // Create new tree
+      logger.info(`Creating tree with ${blobs.length} blobs`);
+      logger.debug('Tree items:', JSON.stringify(blobs.map(b => ({ path: b.path, type: b.type }))));
+      
       const { data: tree } = await this.octokit.git.createTree({
         owner: this.owner,
         repo: this.repo,
@@ -135,6 +138,12 @@ class GitHubClient {
       return newCommit.sha;
     } catch (error) {
       logger.error(`Failed to commit files to ${branchName}:`, error.message);
+      if (error.response) {
+        logger.error('GitHub API response:', JSON.stringify(error.response.data, null, 2));
+      }
+      if (error.status === 422 && files) {
+        logger.error('Files that failed:', files.map(f => f.path).join(', '));
+      }
       return null;
     }
   }
