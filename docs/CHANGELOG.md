@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Recent Commits
+- Fix webhook signature verification buffer length error (836de64)
+- Add PM2 ecosystem config for reliable agent startup (1f66de3)
+- docs: Auto-update CHANGELOG.md [skip ci] (fc13879)
+- Update VPS guide with Windows auto-start and troubleshooting (c907ccc)
+- docs: Auto-update CHANGELOG.md [skip ci] (689360a)
+- Add VPS deployment guide links to README (2fd47d0)
+- docs: Auto-update CHANGELOG.md [skip ci] (4d14a42)
+- Add complete A-Z VPS setup guide (ed61410)
+- Add complete deployment summary (0b5eca1)
+- Add webhook quickstart guide (cad25a0)
+- Add GitHub webhook auto-deployment system (ece6c0b)
+- Add comprehensive VPS deployment guide (3af8279)
+- Add complete AI agent orchestrator with Telegram integration and PM Agent (b9a09e2)
+- Add AI team management system with PM orchestration, task system, requests system, and Windows Server deployment guides (730bbde)
+- docs: Create AI workforce system with role-specific prompts and SDLC (ae1f218)
+- docs: Add systematic route-by-route build plan (419ced7)
+- docs: Auto-update CHANGELOG.md [skip ci] (b4f86d5)
+- docs: Add comprehensive 16-week implementation build plan (b55074b)
+- docs: Auto-update CHANGELOG.md [skip ci] (84bd71f)
+- feat: Add auto-documentation pipeline (d20265e)
+
+
+### Recent Commits
 - Update VPS guide with Windows auto-start and troubleshooting (c907ccc)
 - docs: Auto-update CHANGELOG.md [skip ci] (689360a)
 - Add VPS deployment guide links to README (2fd47d0)
