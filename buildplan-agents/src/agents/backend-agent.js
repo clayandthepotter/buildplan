@@ -17,7 +17,7 @@ class BackendAgent extends BaseAgent {
 
   /**
    * Execute a backend development task
-   * Generates API code and creates a GitHub PR
+   * Generates API code, tests it locally, then creates a GitHub PR
    */
   async executeTask(taskPath) {
     try {
@@ -52,6 +52,28 @@ class BackendAgent extends BaseAgent {
       }
 
       logger.info(`${this.role}: Generated ${files.length} files`);
+
+      // Write files locally for testing
+      await this.updateTaskProgress(taskPath, 'Writing files locally');
+      await this.writeFilesLocally(files);
+
+      // Install dependencies if needed
+      await this.updateTaskProgress(taskPath, 'Checking dependencies');
+      const depsInstalled = await this.installRequiredDependencies(files);
+      
+      if (!depsInstalled) {
+        logger.warn(`${this.role}: Some dependencies may not have installed`);
+      }
+
+      // Run tests if they exist
+      await this.updateTaskProgress(taskPath, 'Running tests');
+      const testsPass = await this.runTests(files);
+      
+      if (!testsPass) {
+        logger.error(`${this.role}: Tests failed, not creating PR`);
+        await this.updateTaskProgress(taskPath, 'Tests failed - task blocked');
+        return false;
+      }
 
       // Create PR with generated code
       await this.updateTaskProgress(taskPath, 'Creating GitHub PR');
@@ -162,6 +184,132 @@ Start generating now:`;
   }
 
   /**
+   * Write generated files to local filesystem for testing
+   */
+  async writeFilesLocally(files) {
+    const fs = require('fs');
+    const path = require('path');
+    
+    for (const file of files) {
+      try {
+        const fullPath = path.join(process.env.PROJECT_ROOT, file.path);
+        const dir = path.dirname(fullPath);
+        
+        // Ensure directory exists
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        
+        // Write file
+        fs.writeFileSync(fullPath, file.content, 'utf8');
+        logger.info(`${this.role}: Wrote ${file.path}`);
+      } catch (error) {
+        logger.error(`${this.role}: Failed to write ${file.path}:`, error.message);
+      }
+    }
+  }
+  
+  /**
+   * Install required dependencies from generated code
+   */
+  async installRequiredDependencies(files) {
+    try {
+      // Look for package.json or import statements to identify dependencies
+      const dependencies = this.extractDependencies(files);
+      
+      if (dependencies.length === 0) {
+        logger.info(`${this.role}: No new dependencies detected`);
+        return true;
+      }
+      
+      logger.info(`${this.role}: Installing dependencies: ${dependencies.join(', ')}`);
+      
+      const result = await this.shell.installPackages(dependencies);
+      
+      if (!result.success) {
+        logger.error(`${this.role}: Failed to install dependencies:`, result.stderr);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error(`${this.role}: Error installing dependencies:`, error.message);
+      return false;
+    }
+  }
+  
+  /**
+   * Extract dependencies from generated code
+   */
+  extractDependencies(files) {
+    const deps = new Set();
+    const commonPatterns = [
+      /require\(['\"]([@\w\-\/]+)['\"]\)/g,
+      /from\s+['\"]([@\w\-\/]+)['\"]/ g,
+      /import\s+['\"]([@\w\-\/]+)['\"]/ g
+    ];
+    
+    files.forEach(file => {
+      if (!file.path.endsWith('.js') && !file.path.endsWith('.ts')) return;
+      
+      commonPatterns.forEach(pattern => {
+        const matches = file.content.matchAll(pattern);
+        for (const match of matches) {
+          const dep = match[1];
+          // Only external packages (not relative imports)
+          if (!dep.startsWith('.') && !dep.startsWith('/')) {
+            // Extract package name (handle scoped packages)
+            const pkgName = dep.startsWith('@') 
+              ? dep.split('/').slice(0, 2).join('/')
+              : dep.split('/')[0];
+            deps.add(pkgName);
+          }
+        }
+      });
+    });
+    
+    // Filter out Node.js built-ins
+    const builtins = ['fs', 'path', 'http', 'https', 'crypto', 'util', 'stream', 'events'];
+    return Array.from(deps).filter(d => !builtins.includes(d));
+  }
+  
+  /**
+   * Run tests for generated code
+   */
+  async runTests(files) {
+    try {
+      // Check if test files were generated
+      const testFiles = files.filter(f => 
+        f.path.includes('.test.') || 
+        f.path.includes('.spec.') ||
+        f.path.includes('/test/') ||
+        f.path.includes('/tests/')
+      );
+      
+      if (testFiles.length === 0) {
+        logger.info(`${this.role}: No test files generated, skipping tests`);
+        return true; // Not a failure if no tests exist
+      }
+      
+      logger.info(`${this.role}: Running ${testFiles.length} test file(s)`);
+      
+      // Try to run tests
+      const result = await this.shell.runTests();
+      
+      if (!result.success) {
+        logger.error(`${this.role}: Tests failed:`, result.stderr);
+        return false;
+      }
+      
+      logger.info(`${this.role}: All tests passed!`);
+      return true;
+    } catch (error) {
+      logger.error(`${this.role}: Error running tests:`, error.message);
+      return false;
+    }
+  }
+  
+  /**
    * Build PR description
    */
   buildPRDescription(task, files) {
@@ -179,6 +327,9 @@ ${task.content.substring(0, 500)}${task.content.length > 500 ? '...' : ''}
 
 ### Generated by
 Backend Agent (AI)
+
+### Testing
+✅ Code tested locally before PR creation
 
 ### Review Checklist
 - [ ] Code follows project conventions

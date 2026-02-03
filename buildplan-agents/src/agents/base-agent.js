@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const openai = require('../utils/openai-client');
 const github = require('../utils/github-client');
 const fileOps = require('../utils/file-ops');
+const ShellExecutor = require('../utils/shell-executor');
 
 /**
  * Base class for all specialist AI agents
@@ -17,6 +18,7 @@ class BaseAgent {
     this.currentTask = null;
     this.workload = 0; // Number of active tasks
     this.maxWorkload = 2; // Maximum concurrent tasks
+    this.shell = new ShellExecutor(); // Shell command execution capabilities
   }
 
   /**
