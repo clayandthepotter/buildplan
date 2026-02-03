@@ -225,6 +225,12 @@ PORT=3000
 - `PASTE_YOUR_BOT_TOKEN_HERE` with your bot token from Step 11
 - `PASTE_YOUR_CHAT_ID_HERE` with your chat ID from Step 12
 
+**Important Path Note:**
+- If your VPS username is NOT "Administrator", change the paths:
+- Use: `C:\\Users\\YourUsername\\Projects\\buildplan`
+- Replace `YourUsername` with your actual Windows username
+- Use double backslashes (`\\`) in the `.env` file
+
 **Save** (Ctrl+S) and **close** Notepad.
 
 ---
@@ -779,14 +785,97 @@ pm2 restart buildplan-agents
 
 ---
 
+### Missing Module Errors (MODULE_NOT_FOUND)
+
+**Error:** `Cannot find module 'node-telegram-bot-api'` or similar
+
+**Fix:**
+```pwsh
+cd C:\Users\Administrator\Projects\buildplan\buildplan-agents
+npm install
+```
+
+**Note**: Make sure you run `npm install` in the `buildplan-agents` folder, not the project root.
+
+---
+
+### PROJECT_ROOT Error ("path" argument must be of type string)
+
+**Error:** `The "path" argument must be of type string. Received undefined`
+
+**Cause:** The `.env` file is missing or in the wrong location.
+
+**Fix:**
+```pwsh
+cd C:\Users\Administrator\Projects\buildplan\buildplan-agents
+
+# Create .env file with correct paths
+@"
+OPENAI_API_KEY=your_openai_key_here
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+PROJECT_ROOT=C:\\Users\\Administrator\\Projects\\buildplan
+REQUESTS_DIR=C:\\Users\\Administrator\\Projects\\buildplan\\requests
+TASKS_DIR=C:\\Users\\Administrator\\Projects\\buildplan\\tasks
+STANDUP_DIR=C:\\Users\\Administrator\\Projects\\buildplan\\standup
+PM_AGENT_INTERVAL=3600000
+STANDUP_CRON=0 8 * * *
+NODE_ENV=production
+PORT=3000
+LOG_LEVEL=info
+"@ | Out-File -FilePath .env -Encoding utf8
+
+# Verify
+Get-Content .env
+```
+
+**Important:** There are TWO `.env` files:
+1. `C:\Users\Administrator\Projects\buildplan\.env` - For webhook server
+2. `C:\Users\Administrator\Projects\buildplan\buildplan-agents\.env` - For agent system
+
+---
+
 ### Services Not Starting on VPS Reboot
 
-**Setup PM2 startup:**
-```pwsh
-pm2 startup
-# Copy and run the command it outputs
+**On Windows Server, use pm2-windows-service:**
 
-pm2 save
+```pwsh
+# Install PM2 Windows Service
+npm install -g pm2-windows-service
+
+# Install the service (run as Administrator)
+pm2-service-install -n PM2
+```
+
+**When prompted:**
+- PM2_HOME: Press Enter (use default)
+- PM2_SERVICE_SCRIPTS: Press Enter (use default)
+- PM2_SERVICE_PM2_DIR: Press Enter (use default)
+
+**Start the service:**
+```pwsh
+pm2-service-start
+
+# Verify
+pm2 list
+```
+
+**Alternative: Task Scheduler**
+
+If pm2-windows-service doesn't work:
+
+```pwsh
+# Create startup script
+@"
+cd C:\Users\Administrator\Projects\buildplan\buildplan-agents
+pm2 resurrect
+"@ | Out-File -FilePath "C:\startup-pm2.bat" -Encoding ASCII
+
+# Create scheduled task
+$action = New-ScheduledTaskAction -Execute "pm2" -Argument "resurrect"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "Administrator" -RunLevel Highest
+Register-ScheduledTask -TaskName "PM2-Startup" -Action $action -Trigger $trigger -Principal $principal
 ```
 
 ---
@@ -855,6 +944,8 @@ Now that your system is running:
 - [ ] Both services online in PM2
 - [ ] Telegram commands working
 - [ ] System monitoring verified
+- [ ] PM2 auto-start configured (pm2-windows-service or Task Scheduler)
+- [ ] VPS reboot tested (optional but recommended)
 
 ---
 
