@@ -438,15 +438,88 @@ class AgentOrchestrator {
   
   /**
    * Send formatted message using HTML parse mode
+   * Automatically splits long messages to fit Telegram's 4096 char limit
    */
   async sendFormattedMessage(chatId, message) {
+    const MAX_LENGTH = 4000; // Leave some margin for safety
+    
     try {
-      await this.telegramBot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+      // If message fits in one chunk, send it
+      if (message.length <= MAX_LENGTH) {
+        await this.telegramBot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+        return;
+      }
+      
+      // Split long messages into chunks
+      const chunks = this.splitMessage(message, MAX_LENGTH);
+      
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const prefix = i > 0 ? `<i>(continued ${i + 1}/${chunks.length})</i>\n\n` : '';
+        await this.telegramBot.sendMessage(chatId, prefix + chunk, { parse_mode: 'HTML' });
+        
+        // Small delay between chunks to avoid rate limiting
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
     } catch (error) {
       logger.error('Failed to send formatted message:', error);
       // Fallback to plain text
-      await this.telegramBot.sendMessage(chatId, message.replace(/<[^>]*>/g, ''));
+      const plainText = message.replace(/<[^>]*>/g, '');
+      if (plainText.length <= MAX_LENGTH) {
+        await this.telegramBot.sendMessage(chatId, plainText);
+      } else {
+        // Split plain text too
+        const chunks = this.splitMessage(plainText, MAX_LENGTH);
+        for (const chunk of chunks) {
+          await this.telegramBot.sendMessage(chatId, chunk);
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
     }
+  }
+  
+  /**
+   * Split message into chunks at natural break points (newlines)
+   */
+  splitMessage(message, maxLength) {
+    const chunks = [];
+    let currentChunk = '';
+    const lines = message.split('\n');
+    
+    for (const line of lines) {
+      // If adding this line exceeds max length, save current chunk
+      if (currentChunk.length + line.length + 1 > maxLength) {
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+          currentChunk = '';
+        }
+        
+        // If single line is too long, force split it
+        if (line.length > maxLength) {
+          const words = line.split(' ');
+          for (const word of words) {
+            if (currentChunk.length + word.length + 1 > maxLength) {
+              chunks.push(currentChunk.trim());
+              currentChunk = word;
+            } else {
+              currentChunk += (currentChunk ? ' ' : '') + word;
+            }
+          }
+        } else {
+          currentChunk = line;
+        }
+      } else {
+        currentChunk += (currentChunk ? '\n' : '') + line;
+      }
+    }
+    
+    if (currentChunk) {
+      chunks.push(currentChunk.trim());
+    }
+    
+    return chunks.length > 0 ? chunks : [message];
   }
   
   /**
