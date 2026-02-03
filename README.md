@@ -144,6 +144,26 @@ buildplan/
 
 ## Getting Started
 
+### 🚀 Quick Deploy to VPS
+
+**Want to deploy the AI agent system right now?**
+
+👉 **[VPS_SETUP_A_TO_Z.md](VPS_SETUP_A_TO_Z.md)** - Complete step-by-step guide (60 minutes)
+
+This gets you:
+- ✅ AI Agent team with PM orchestrator
+- ✅ Telegram bot for communication
+- ✅ Automatic deployment from GitHub
+- ✅ 24/7 operation with PM2
+
+**Other Deployment Guides:**
+- [WEBHOOK_QUICKSTART.md](WEBHOOK_QUICKSTART.md) - Setup auto-deployment in 10 minutes
+- [DEPLOYMENT_COMPLETE.md](DEPLOYMENT_COMPLETE.md) - Complete system overview
+- [docs/VPS_DEPLOYMENT_GUIDE.md](docs/VPS_DEPLOYMENT_GUIDE.md) - Detailed VPS guide
+- [docs/WEBHOOK_SETUP.md](docs/WEBHOOK_SETUP.md) - Webhook configuration reference
+
+---
+
 ### Prerequisites
 - Node.js 18+ and npm
 - GitHub account with access to create GitHub Apps
