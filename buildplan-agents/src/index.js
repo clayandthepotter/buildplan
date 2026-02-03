@@ -13,6 +13,16 @@ class AgentOrchestrator {
     this.telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
     this.pmAgent = null;
     this.db = null;
+    
+    // Specialist AI agents
+    this.agents = {
+      architect: null,
+      backend: null,
+      frontend: null,
+      devops: null,
+      qa: null,
+      docs: null
+    };
   }
 
   async start() {
@@ -27,6 +37,10 @@ class AgentOrchestrator {
       const { PMAgent } = require('./agents/pm-agent');
       this.pmAgent = new PMAgent(this);
       logger.info('✅ PM Agent loaded');
+      
+      // 2b. Load Specialist Agents
+      this.loadSpecialistAgents();
+      logger.info('✅ Specialist agents loaded');
       
       // 3. Setup Telegram bot
       this.setupTelegramHandlers();
@@ -52,6 +66,57 @@ class AgentOrchestrator {
       logger.error('Failed to start orchestrator:', error);
       throw error;
     }
+  }
+
+  loadSpecialistAgents() {
+    const BackendAgent = require('./agents/backend-agent');
+    const ArchitectAgent = require('./agents/architect-agent');
+    
+    this.agents.backend = new BackendAgent(this);
+    this.agents.architect = new ArchitectAgent(this);
+    
+    // TODO: Add remaining agents as they're implemented
+    // this.agents.frontend = new FrontendAgent(this);
+    // this.agents.devops = new DevOpsAgent(this);
+    // this.agents.qa = new QAAgent(this);
+    // this.agents.docs = new DocsAgent(this);
+    
+    logger.info('Loaded agents: Backend, Architect');
+  }
+  
+  /**
+   * Get appropriate agent for a task based on task type
+   */
+  getAgentForTask(taskType) {
+    const agentMap = {
+      'design': this.agents.architect,
+      'architecture': this.agents.architect,
+      'backend': this.agents.backend,
+      'backend-api': this.agents.backend,
+      'api': this.agents.backend,
+      'frontend': this.agents.frontend,
+      'ui': this.agents.frontend,
+      'devops': this.agents.devops,
+      'database': this.agents.devops,
+      'qa': this.agents.qa,
+      'testing': this.agents.qa,
+      'docs': this.agents.docs,
+      'documentation': this.agents.docs
+    };
+    
+    const agent = agentMap[taskType.toLowerCase()];
+    
+    if (!agent) {
+      logger.warn(`No agent found for task type: ${taskType}`);
+      return null;
+    }
+    
+    if (!agent.isAvailable()) {
+      logger.warn(`${agent.role} is not available (workload: ${agent.workload})`);
+      return null;
+    }
+    
+    return agent;
   }
 
   async setupDatabase() {
