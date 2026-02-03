@@ -346,10 +346,12 @@ class AgentOrchestrator {
         const content = fileOps.readFile(todoPath);
         
         if (content) {
-          // Send first 3000 chars (Telegram limit is 4096)
-          const preview = content.substring(0, 3000);
+          // Format markdown for Telegram (first 3800 chars to leave room for header)
+          const preview = content.substring(0, 3800);
+          const formatted = this.formatMarkdownForTelegram(preview);
+          
           await this.sendFormattedMessage(msg.chat.id, 
-            `📋 <b>TODO.md</b>\n\n<pre>${this.escapeHtml(preview)}</pre>`
+            `📋 <b>TODO.md</b>\n\n${formatted}`
           );
         } else {
           await this.sendFormattedMessage(msg.chat.id, '⚠️ TODO.md not found');
@@ -368,9 +370,15 @@ class AgentOrchestrator {
         const content = fileOps.readFile(docPath);
         
         if (content) {
-          const preview = content.substring(0, 3000);
+          const preview = content.substring(0, 3800);
+          
+          // Format markdown files, show raw for others
+          const formatted = filename.endsWith('.md') ?
+            this.formatMarkdownForTelegram(preview) :
+            `<pre>${this.escapeHtml(preview)}</pre>`;
+          
           await this.sendFormattedMessage(msg.chat.id, 
-            `📄 <b>${filename}</b>\n\n<pre>${this.escapeHtml(preview)}</pre>`
+            `📄 <b>${filename}</b>\n\n${formatted}`
           );
         } else {
           await this.sendFormattedMessage(msg.chat.id, `⚠️ File not found: ${filename}`);
@@ -449,6 +457,46 @@ class AgentOrchestrator {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+  }
+  
+  /**
+   * Convert markdown to Telegram HTML format
+   */
+  formatMarkdownForTelegram(markdown) {
+    let html = markdown;
+    
+    // Escape HTML first
+    html = this.escapeHtml(html);
+    
+    // Headers (### Header -> <b>Header</b>)
+    html = html.replace(/^###\s+(.+)$/gm, '<b>📌 $1</b>');
+    html = html.replace(/^##\s+(.+)$/gm, '<b>🔹 $1</b>');
+    html = html.replace(/^#\s+(.+)$/gm, '<b>▪️ $1</b>');
+    
+    // Bold (**text** or __text__)
+    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/__(.+?)__/g, '<b>$1</b>');
+    
+    // Italic (*text* or _text_)
+    html = html.replace(/\*(.+?)\*/g, '<i>$1</i>');
+    html = html.replace(/_(.+?)_/g, '<i>$1</i>');
+    
+    // Code blocks (```code```)
+    html = html.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+    
+    // Inline code (`code`)
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Links [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    
+    // Bullet points (- item or * item)
+    html = html.replace(/^[\*\-]\s+(.+)$/gm, '  • $1');
+    
+    // Strikethrough (~~text~~)
+    html = html.replace(/~~(.+?)~~/g, '<s>$1</s>');
+    
+    return html;
   }
 
   async notifyTelegram(message, options = {}) {
