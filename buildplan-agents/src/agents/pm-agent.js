@@ -187,14 +187,30 @@ Be concise, professional, and proactive.`;
       const requestPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', requestFile);
       
       if (fs.existsSync(requestPath)) {
+        // Read the request to get the analysis
+        const requestContent = fileOps.readFile(requestPath);
+        
         // Move request to approved
         const approvedPath = path.join(process.env.REQUESTS_DIR, 'approved', requestFile);
         fileOps.moveFile(requestPath, approvedPath);
         
         await this.notifyTelegram(`✅ Request ${taskId} approved! Creating tasks...`);
         
-        // TODO: Create actual task files from breakdown
-        await this.notifyTelegram(`🎯 Tasks created. Team will begin work shortly.`);
+        // Create task files from the analysis
+        const tasksCreated = await this.createTasksFromRequest(taskId, requestContent);
+        
+        if (tasksCreated.length > 0) {
+          await this.notifyTelegram(
+            `🎯 Created ${tasksCreated.length} tasks:\n` +
+            tasksCreated.map(t => `• ${t}`).join('\n') +
+            `\n\nAgents will begin work automatically.`
+          );
+          
+          // Assign tasks to agents
+          await this.assignPendingTasks();
+        } else {
+          await this.notifyTelegram(`⚠️ No tasks created. Please check the request format.`);
+        }
         
         return;
       }
@@ -231,6 +247,163 @@ Be concise, professional, and proactive.`;
     }
   }
 
+  /**
+   * Create task files from approved request
+   */
+  async createTasksFromRequest(requestId, requestContent) {
+    try {
+      // Ask OpenAI to extract tasks from the analysis
+      const taskPrompt = `Based on this request analysis, create specific task assignments.
+
+${requestContent}
+
+For each task, provide:
+1. Task type (design, backend, frontend, devops, qa, docs)
+2. Brief title
+3. Description
+
+Format each task as:
+TASK: [type] - [title]
+DESCRIPTION: [description]
+
+Generate the tasks now:`;
+
+      const tasksText = await openai.pmAgentChat(this.systemPrompt, taskPrompt);
+      
+      // Parse tasks from response
+      const tasks = this.parseTasksFromText(tasksText);
+      const taskIds = [];
+      
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+        const taskId = `TASK-${requestId.replace('REQ-', '')}-${String(i + 1).padStart(2, '0')}`;
+        
+        // Create task file
+        const taskContent = this.formatTaskFile(taskId, requestId, task);
+        const taskPath = path.join(process.env.TASKS_DIR, 'backlog', `${taskId}.md`);
+        
+        fileOps.ensureDirectory(path.dirname(taskPath));
+        fileOps.writeFile(taskPath, taskContent);
+        
+        taskIds.push(taskId);
+        logger.info(`Created task: ${taskId} (${task.type})`);
+      }
+      
+      return taskIds;
+      
+    } catch (error) {
+      logger.error('Error creating tasks:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse tasks from OpenAI response
+   */
+  parseTasksFromText(text) {
+    const tasks = [];
+    const taskRegex = /TASK:\s*\[([^\]]+)\]\s*-\s*([^\n]+)\s*DESCRIPTION:\s*([^\n]+(?:\n(?!TASK:)[^\n]+)*)/gi;
+    
+    let match;
+    while ((match = taskRegex.exec(text)) !== null) {
+      tasks.push({
+        type: match[1].trim().toLowerCase(),
+        title: match[2].trim(),
+        description: match[3].trim()
+      });
+    }
+    
+    // Fallback: if no tasks found, create a generic backend task
+    if (tasks.length === 0) {
+      logger.warn('No tasks parsed from OpenAI response, creating default task');
+      tasks.push({
+        type: 'backend',
+        title: 'Implement feature',
+        description: text.substring(0, 500)
+      });
+    }
+    
+    return tasks;
+  }
+
+  /**
+   * Format task file with metadata
+   */
+  formatTaskFile(taskId, requestId, task) {
+    return `---
+id: ${taskId}
+request_id: ${requestId}
+type: ${task.type}
+title: ${task.title}
+status: pending
+assigned_to: none
+created_at: ${new Date().toISOString()}
+priority: medium
+---
+
+# ${taskId}: ${task.title}
+
+## Description
+${task.description}
+
+## Requirements
+- Follow project conventions
+- Include tests
+- Add documentation
+- Create PR when complete
+
+## Progress Log
+- [${new Date().toISOString()}] PM Agent: Task created from ${requestId}
+`;
+  }
+
+  /**
+   * Assign pending tasks to available agents
+   */
+  async assignPendingTasks() {
+    try {
+      const backlogDir = path.join(process.env.TASKS_DIR, 'backlog');
+      const backlogTasks = fileOps.listFiles(backlogDir);
+      
+      for (const taskPath of backlogTasks) {
+        // Read task to get type
+        const content = fileOps.readFile(taskPath);
+        if (!content) continue;
+        
+        // Extract task type from frontmatter
+        const typeMatch = content.match(/type:\s*([^\n]+)/);
+        if (!typeMatch) continue;
+        
+        const taskType = typeMatch[1].trim();
+        const taskId = path.basename(taskPath, '.md');
+        
+        // Get appropriate agent
+        const agent = this.orchestrator.getAgentForTask(taskType);
+        
+        if (!agent) {
+          logger.warn(`No available agent for task ${taskId} (type: ${taskType})`);
+          continue;
+        }
+        
+        // Move to in-progress
+        const inProgressPath = path.join(process.env.TASKS_DIR, 'in-progress', path.basename(taskPath));
+        fileOps.moveFile(taskPath, inProgressPath);
+        
+        logger.info(`Assigned ${taskId} to ${agent.role}`);
+        
+        // Start agent work asynchronously
+        agent.runTaskWorkflow(inProgressPath).catch(err => {
+          logger.error(`Agent ${agent.role} failed on ${taskId}:`, err);
+        });
+        
+        await this.notifyTelegram(`🚀 ${agent.role} started working on ${taskId}`);
+      }
+      
+    } catch (error) {
+      logger.error('Error assigning tasks:', error);
+    }
+  }
+
   async tick() {
     // Periodic check for new work
     logger.debug('PM Agent tick');
@@ -242,6 +415,9 @@ Be concise, professional, and proactive.`;
     for (const file of pending) {
       await this.processNewRequest(file);
     }
+    
+    // Check for tasks ready to assign
+    await this.assignPendingTasks();
   }
 
   async notifyTelegram(message, options = {}) {
