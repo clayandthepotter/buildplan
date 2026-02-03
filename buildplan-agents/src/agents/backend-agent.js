@@ -244,9 +244,9 @@ Start generating now:`;
   extractDependencies(files) {
     const deps = new Set();
     const commonPatterns = [
-      /require\(['\"]([@\w\-\/]+)['\"]\)/g,
-      /from\s+['\"]([@\w\-\/]+)['\"]/ g,
-      /import\s+['\"]([@\w\-\/]+)['\"]/ g
+      /require\(['\"]([@ \w\-\/]+)['\"]\)/g,
+      /from\s+['\"]([@ \w\-\/]+)['\"] /g,
+      /import\s+['\"]([@ \w\-\/]+)['\"] /g
     ];
     
     files.forEach(file => {
