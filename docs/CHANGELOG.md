@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Recent Commits
+- feat: Add shell execution capabilities to agents for testing and validation (4cd66ef)
+- docs: Auto-update CHANGELOG.md [skip ci] (c680cf9)
+- feat: Add information gathering workflow and /provide command (5e5577f)
+- docs: Auto-update CHANGELOG.md [skip ci] (bd3d5be)
+- feat: Add /modify command to request changes to pending analysis (301ad6c)
+- docs: Auto-update CHANGELOG.md [skip ci] (b59850c)
+- fix: Convert markdown to HTML in PM Agent analysis instead of escaping (eca2bec)
+- docs: Auto-update CHANGELOG.md [skip ci] (950b8f7)
+- fix: Add better error logging and file path validation for GitHub PR creation (c897759)
+- docs: Auto-update CHANGELOG.md [skip ci] (a8c5ea0)
+- fix: Remove 600 char truncation from PM Agent analysis - use automatic splitting (48f4f33)
+- docs: Auto-update CHANGELOG.md [skip ci] (7e008d1)
+- fix: Support multiline /request, remove premature truncation, improve PM analysis (b6149e2)
+- docs: Auto-update CHANGELOG.md [skip ci] (a980c46)
+- feat: Add automatic message splitting for long content exceeding Telegram limits (d1f526b)
+- docs: Auto-update CHANGELOG.md [skip ci] (44b5869)
+- feat: Add markdown to HTML formatting for /todo and /doc commands (6381902)
+- docs: Auto-update CHANGELOG.md [skip ci] (72ba909)
+- Add /template command for structured requests (9177868)
+- docs: Auto-update CHANGELOG.md [skip ci] (68b2b3d)
+
+
+### Recent Commits
 - feat: Add information gathering workflow and /provide command (5e5577f)
 - docs: Auto-update CHANGELOG.md [skip ci] (bd3d5be)
 - feat: Add /modify command to request changes to pending analysis (301ad6c)
