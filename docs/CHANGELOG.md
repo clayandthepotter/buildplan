@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Recent Commits
+- fix: Support multiline /request, remove premature truncation, improve PM analysis (b6149e2)
+- docs: Auto-update CHANGELOG.md [skip ci] (a980c46)
+- feat: Add automatic message splitting for long content exceeding Telegram limits (d1f526b)
+- docs: Auto-update CHANGELOG.md [skip ci] (44b5869)
+- feat: Add markdown to HTML formatting for /todo and /doc commands (6381902)
+- docs: Auto-update CHANGELOG.md [skip ci] (72ba909)
+- Add /template command for structured requests (9177868)
+- docs: Auto-update CHANGELOG.md [skip ci] (68b2b3d)
+- Enhance Telegram UI: Better formatting, new commands, progress updates (25bcae9)
+- docs: Auto-update CHANGELOG.md [skip ci] (e0c16f0)
+- Complete end-to-end autonomous AI agent system (d5791fd)
+- docs: Auto-update CHANGELOG.md [skip ci] (9aa753d)
+- Phase 2: Add Backend and Architect agents (f02dfdd)
+- docs: Auto-update ARCHITECTURE.md [skip ci] (14c0b42)
+- Phase 1: Add GitHub client and base agent class (68e98f8)
+- docs: Auto-update CHANGELOG.md [skip ci] (11227e4)
+- Fix webhook signature verification buffer length error (836de64)
+- Add PM2 ecosystem config for reliable agent startup (1f66de3)
+- docs: Auto-update CHANGELOG.md [skip ci] (fc13879)
+- Update VPS guide with Windows auto-start and troubleshooting (c907ccc)
+
+
+### Recent Commits
 - feat: Add automatic message splitting for long content exceeding Telegram limits (d1f526b)
 - docs: Auto-update CHANGELOG.md [skip ci] (44b5869)
 - feat: Add markdown to HTML formatting for /todo and /doc commands (6381902)
