@@ -65,9 +65,12 @@ ${content}` :
       fileOps.moveFile(requestPath, newPath);
 
       // Send breakdown to Telegram - let orchestrator handle splitting for long messages
+      // Convert markdown analysis to HTML for better formatting
+      const formattedAnalysis = this.convertMarkdownToHtml(analysis);
+      
       await this.notifyTelegram(
         `✅ <b>Analysis Complete</b>\n\n` +
-        `<i>${this.escapeHtml(analysis)}</i>\n\n` +
+        `${formattedAnalysis}\n\n` +
         `👉 Type <code>/approve</code> to proceed`,
         { parse_mode: 'HTML' }
       );
@@ -446,6 +449,47 @@ ${task.description}
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+  }
+  
+  /**
+   * Convert markdown to HTML for Telegram
+   */
+  convertMarkdownToHtml(markdown) {
+    let html = markdown;
+    
+    // Escape HTML first
+    html = this.escapeHtml(html);
+    
+    // Headers (### Header -> <b>Header</b>)
+    html = html.replace(/^####\s+(.+)$/gm, '<b>📍 $1</b>');
+    html = html.replace(/^###\s+(.+)$/gm, '<b>📌 $1</b>');
+    html = html.replace(/^##\s+(.+)$/gm, '<b>🔹 $1</b>');
+    html = html.replace(/^#\s+(.+)$/gm, '<b>▪️ $1</b>');
+    
+    // Bold (**text** or __text__)
+    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/__(.+?)__/g, '<b>$1</b>');
+    
+    // Italic (*text* or _text_) - be careful not to match ** or __
+    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
+    html = html.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<i>$1</i>');
+    
+    // Code blocks (```code```)
+    html = html.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+    
+    // Inline code (`code`)
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Links [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    
+    // Bullet points (- item or * item)
+    html = html.replace(/^[\*\-]\s+(.+)$/gm, '  • $1');
+    
+    // Numbered lists (1. item)
+    html = html.replace(/^\d+\.\s+(.+)$/gm, '  $1');
+    
+    return html;
   }
 
   async notifyTelegram(message, options = {}) {
