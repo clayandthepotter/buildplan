@@ -64,11 +64,10 @@ ${content}` :
       const newPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', fileName);
       fileOps.moveFile(requestPath, newPath);
 
-      // Send breakdown to Telegram (shorter format)
-      const preview = analysis.length > 600 ? analysis.substring(0, 600) + '...' : analysis;
+      // Send breakdown to Telegram - let orchestrator handle splitting for long messages
       await this.notifyTelegram(
         `✅ <b>Analysis Complete</b>\n\n` +
-        `<i>${this.escapeHtml(preview)}</i>\n\n` +
+        `<i>${this.escapeHtml(analysis)}</i>\n\n` +
         `👉 Type <code>/approve</code> to proceed`,
         { parse_mode: 'HTML' }
       );
