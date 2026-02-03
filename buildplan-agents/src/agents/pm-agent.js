@@ -267,6 +267,64 @@ ${content}` :
       throw error;
     }
   }
+  
+  /**
+   * Modify pending request based on user feedback
+   */
+  async modifyRequest(requestId, modifications, username) {
+    try {
+      logger.info(`Modifying ${requestId} by ${username}: ${modifications}`);
+      
+      // Find the request in in-analysis
+      const requestFile = `${requestId}.md`;
+      const requestPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', requestFile);
+      
+      if (!fs.existsSync(requestPath)) {
+        await this.notifyTelegram(`❌ Request ${requestId} not found in analysis`);
+        return;
+      }
+      
+      // Read original request
+      const originalRequest = fileOps.readFile(requestPath);
+      
+      await this.notifyTelegram(`⏳ <b>Updating analysis...</b>`, { parse_mode: 'HTML' });
+      
+      // Re-analyze with modifications
+      const modificationPrompt = `The user has requested changes to the analysis.
+
+Original Request:
+${originalRequest}
+
+User's Modifications:
+${modifications}
+
+Provide an UPDATED analysis (max 400 words) incorporating these changes:
+1. High-level goal
+2. Key tasks/phases identified (with modifications applied)
+3. Any dependencies or blockers
+4. Recommended approach
+
+IMPORTANT: Apply the user's modifications exactly as requested.`;
+      
+      const updatedAnalysis = await openai.pmAgentChat(this.systemPrompt, modificationPrompt);
+      
+      // Send updated analysis
+      const formattedAnalysis = this.convertMarkdownToHtml(updatedAnalysis);
+      
+      await this.notifyTelegram(
+        `✅ <b>Updated Analysis</b>\n\n` +
+        `${formattedAnalysis}\n\n` +
+        `👉 Type <code>/approve</code> to proceed or <code>/modify</code> again`,
+        { parse_mode: 'HTML' }
+      );
+      
+      logger.info(`Request ${requestId} modified`);
+      
+    } catch (error) {
+      logger.error('Error modifying request:', error);
+      throw error;
+    }
+  }
 
   /**
    * Create task files from approved request

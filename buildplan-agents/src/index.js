@@ -302,6 +302,28 @@ class AgentOrchestrator {
       }
     });
 
+    // /modify command - request changes to pending analysis
+    this.telegramBot.onText(/\/modify([\s\S]+)/, async (msg, match) => {
+      try {
+        const modifications = match[1].trim();
+        
+        if (!modifications) {
+          await this.sendFormattedMessage(msg.chat.id, '❌ Please specify what you want to modify');
+          return;
+        }
+        
+        if (!this.lastRequestId) {
+          await this.sendFormattedMessage(msg.chat.id, '❌ No active request to modify. Submit one first with /request');
+          return;
+        }
+        
+        await this.pmAgent.modifyRequest(this.lastRequestId, modifications, msg.from.username);
+      } catch (error) {
+        logger.error('Error in /modify:', error);
+        await this.sendFormattedMessage(msg.chat.id, '❌ <b>Error</b>: Could not modify request');
+      }
+    });
+    
     // /approve command - now supports just /approve (uses last request)
     this.telegramBot.onText(/\/approve\s*(.*)/, async (msg, match) => {
       try {
@@ -426,6 +448,7 @@ class AgentOrchestrator {
         `<b>Core Commands:</b>\n` +
         `📝 /request [description] - Submit work request\n` +
         `📑 /template - Get structured request template\n` +
+        `✏️ /modify [changes] - Request changes to analysis\n` +
         `✅ /approve - Approve latest request\n` +
         `📋 /status - Check team progress\n\n` +
         `<b>Info & Reports:</b>\n` +
@@ -435,8 +458,9 @@ class AgentOrchestrator {
         `<b>Quick Start:</b>\n` +
         `1. Type <code>/template</code> to see request format\n` +
         `2. Submit with <code>/request [details]</code>\n` +
-        `3. Approve with <code>/approve</code>\n` +
-        `4. Watch agents build it!`;
+        `3. Review analysis, use <code>/modify</code> if needed\n` +
+        `4. Approve with <code>/approve</code>\n` +
+        `5. Watch agents build it!`;
       
       await this.sendFormattedMessage(msg.chat.id, help);
     });
