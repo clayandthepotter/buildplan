@@ -178,9 +178,19 @@ class BaseAgent {
   }
 
   /**
-   * Notify PM agent of completion or blocker
+   * Notify PM agent and Telegram of progress
    */
-  async notifyPM(message) {
+  async notifyPM(message, sendToTelegram = true) {
+    if (sendToTelegram) {
+      // Send formatted message to Telegram
+      const emoji = message.includes('✅') ? '' : 
+                    message.includes('🚀') ? '' :
+                    message.includes('🔧') ? '' : '💬';
+      return this.orchestrator.notifyTelegram(
+        `${emoji} <b>${this.role}</b>\n${message}`,
+        { parse_mode: 'HTML' }
+      );
+    }
     return this.orchestrator.notifyTelegram(`[${this.role}] ${message}`);
   }
 
@@ -206,7 +216,14 @@ class BaseAgent {
     this.currentTask = null;
 
     logger.info(`${this.role}: Completed ${fileName}, moved to review`);
-    await this.notifyPM(`✅ Completed ${fileName}${prUrl ? ` - ${prUrl}` : ''}`);
+    
+    // Send formatted completion message
+    const taskId = fileName.replace('.md', '');
+    await this.notifyPM(
+      prUrl ? 
+        `✅ <b>Task Complete:</b> <code>${taskId}</code>\n🔗 <a href="${prUrl}">View PR</a>` :
+        `✅ <b>Task Complete:</b> <code>${taskId}</code>`
+    );
 
     return true;
   }
@@ -238,7 +255,11 @@ class BaseAgent {
       this.currentTask = taskPath;
       this.workload++;
 
-      logger.info(`${this.role}: Starting task ${path.basename(taskPath)}`);
+      const taskId = path.basename(taskPath, '.md');
+      logger.info(`${this.role}: Starting task ${taskId}`);
+      
+      // Notify start
+      await this.notifyPM(`🚀 <b>Started:</b> <code>${taskId}</code>`);
       await this.updateTaskProgress(taskPath, 'Started working on task');
 
       // Execute task (implemented by subclass)

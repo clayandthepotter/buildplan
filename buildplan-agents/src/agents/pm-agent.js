@@ -35,12 +35,12 @@ Be concise, professional, and proactive.`;
       }
 
       // Notify user
-      await this.notifyTelegram(`📥 New request detected! Analyzing...`);
+      await this.notifyTelegram(`⏳ <b>Analyzing request...</b>`, { parse_mode: 'HTML' });
 
       // Analyze with OpenAI
       const analysis = await openai.pmAgentChat(
         this.systemPrompt,
-        `Analyze this project request and create a task breakdown:\n\n${content}`
+        `Analyze this request and create a concise task breakdown (max 300 words):\n\n${content}`
       );
 
       // Move to in-analysis
@@ -48,11 +48,13 @@ Be concise, professional, and proactive.`;
       const newPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', fileName);
       fileOps.moveFile(requestPath, newPath);
 
-      // Send breakdown to Telegram
+      // Send breakdown to Telegram (shorter format)
+      const preview = analysis.length > 600 ? analysis.substring(0, 600) + '...' : analysis;
       await this.notifyTelegram(
-        `📋 *Request Analysis Complete*\n\n${analysis}\n\n` +
-        `Reply with /approve ${fileName.replace('.md', '')} to proceed`,
-        { parse_mode: 'Markdown' }
+        `✅ <b>Analysis Complete</b>\n\n` +
+        `<i>${this.escapeHtml(preview)}</i>\n\n` +
+        `👉 Type <code>/approve</code> to proceed`,
+        { parse_mode: 'HTML' }
       );
 
       logger.info(`Request processed: ${fileName}`);
@@ -201,9 +203,10 @@ Be concise, professional, and proactive.`;
         
         if (tasksCreated.length > 0) {
           await this.notifyTelegram(
-            `🎯 Created ${tasksCreated.length} tasks:\n` +
-            tasksCreated.map(t => `• ${t}`).join('\n') +
-            `\n\nAgents will begin work automatically.`
+            `🎯 <b>Created ${tasksCreated.length} Tasks</b>\n` +
+            tasksCreated.map(t => `• <code>${t}</code>`).join('\n') +
+            `\n\n🤖 Agents starting work...`,
+            { parse_mode: 'HTML' }
           );
           
           // Assign tasks to agents
@@ -418,6 +421,16 @@ ${task.description}
     
     // Check for tasks ready to assign
     await this.assignPendingTasks();
+  }
+
+  /**
+   * Escape HTML special characters for Telegram
+   */
+  escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   async notifyTelegram(message, options = {}) {

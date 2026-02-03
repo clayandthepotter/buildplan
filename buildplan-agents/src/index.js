@@ -241,6 +241,9 @@ class AgentOrchestrator {
   }
 
   setupTelegramHandlers() {
+    // Store last request ID for quick approval
+    this.lastRequestId = null;
+    
     // Handle errors
     this.telegramBot.on('polling_error', (error) => {
       logger.error('Telegram polling error:', error);
@@ -252,10 +255,10 @@ class AgentOrchestrator {
         const description = match[1];
         const username = msg.from.username || msg.from.first_name;
         
-        await this.telegramBot.sendMessage(msg.chat.id, `📝 Creating request: "${description}"`);
-        
         // Create request file
         const requestId = `REQ-${Date.now()}`;
+        this.lastRequestId = requestId; // Store for quick approval
+        
         const requestContent = `# ${requestId}: ${description.substring(0, 50)}\n\n` +
           `**Submitted By**: ${username}\n` +
           `**Date**: ${new Date().toISOString()}\n` +
@@ -267,11 +270,15 @@ class AgentOrchestrator {
         const requestPath = path.join(process.env.REQUESTS_DIR, 'pending', `${requestId}.md`);
         fileOps.writeFile(requestPath, requestContent);
         
+        await this.sendFormattedMessage(msg.chat.id, 
+          `📝 <b>Request Created</b>\n<i>${description.substring(0, 100)}...</i>\n\n⏳ Analyzing...`
+        );
+        
         logger.info(`Request created: ${requestId} by ${username}`);
         
       } catch (error) {
         logger.error('Error in /request:', error);
-        await this.telegramBot.sendMessage(msg.chat.id, '❌ Error creating request');
+        await this.sendFormattedMessage(msg.chat.id, '❌ <b>Error</b>: Could not create request');
       }
     });
 
@@ -286,14 +293,25 @@ class AgentOrchestrator {
       }
     });
 
-    // /approve command
-    this.telegramBot.onText(/\/approve (.+)/, async (msg, match) => {
+    // /approve command - now supports just /approve (uses last request)
+    this.telegramBot.onText(/\/approve\s*(.*)/, async (msg, match) => {
       try {
-        const taskId = match[1].trim();
+        let taskId = match[1].trim();
+        
+        // If no ID provided, use last request
+        if (!taskId && this.lastRequestId) {
+          taskId = this.lastRequestId;
+        }
+        
+        if (!taskId) {
+          await this.sendFormattedMessage(msg.chat.id, '❌ No request to approve. Submit one first with /request');
+          return;
+        }
+        
         await this.pmAgent.approveTask(taskId, msg.from.username);
       } catch (error) {
         logger.error('Error in /approve:', error);
-        await this.telegramBot.sendMessage(msg.chat.id, '❌ Error approving task');
+        await this.sendFormattedMessage(msg.chat.id, '❌ <b>Error</b>: Could not approve');
       }
     });
 
@@ -321,23 +339,87 @@ class AgentOrchestrator {
       }
     });
 
+    // /todo command - show TODO.md
+    this.telegramBot.onText(/\/todo/, async (msg) => {
+      try {
+        const todoPath = path.join(process.env.PROJECT_ROOT, 'TODO.md');
+        const content = fileOps.readFile(todoPath);
+        
+        if (content) {
+          // Send first 3000 chars (Telegram limit is 4096)
+          const preview = content.substring(0, 3000);
+          await this.sendFormattedMessage(msg.chat.id, 
+            `📋 <b>TODO.md</b>\n\n<pre>${this.escapeHtml(preview)}</pre>`
+          );
+        } else {
+          await this.sendFormattedMessage(msg.chat.id, '⚠️ TODO.md not found');
+        }
+      } catch (error) {
+        logger.error('Error in /todo:', error);
+        await this.sendFormattedMessage(msg.chat.id, '❌ Error reading TODO.md');
+      }
+    });
+    
+    // /doc command - retrieve any document
+    this.telegramBot.onText(/\/doc (.+)/, async (msg, match) => {
+      try {
+        const filename = match[1].trim();
+        const docPath = path.join(process.env.PROJECT_ROOT, filename);
+        const content = fileOps.readFile(docPath);
+        
+        if (content) {
+          const preview = content.substring(0, 3000);
+          await this.sendFormattedMessage(msg.chat.id, 
+            `📄 <b>${filename}</b>\n\n<pre>${this.escapeHtml(preview)}</pre>`
+          );
+        } else {
+          await this.sendFormattedMessage(msg.chat.id, `⚠️ File not found: ${filename}`);
+        }
+      } catch (error) {
+        logger.error('Error in /doc:', error);
+        await this.sendFormattedMessage(msg.chat.id, '❌ Error reading document');
+      }
+    });
+
     // /help command
     this.telegramBot.onText(/\/help/, async (msg) => {
-      const help = `
-*BuildPlan AI Team Commands*
-
-📝 /request [description] - Submit new project request
-📊 /standup - Get latest standup report
-📋 /status - View all in-progress tasks
-✅ /approve TASK-XXX - Approve a task
-❌ /reject TASK-XXX [reason] - Reject with reason
-❓ /help - This message
-
-*Example:*
-/request Build a login system with email and password
-      `;
-      await this.telegramBot.sendMessage(msg.chat.id, help, { parse_mode: 'Markdown' });
+      const help = `<b>🤖 BuildPlan AI Team</b>\n\n` +
+        `<b>Core Commands:</b>\n` +
+        `📝 /request [description] - Submit work request\n` +
+        `✅ /approve - Approve latest request\n` +
+        `📋 /status - Check team progress\n\n` +
+        `<b>Info & Reports:</b>\n` +
+        `📊 /standup - Daily team report\n` +
+        `📋 /todo - View TODO.md\n` +
+        `📄 /doc [filename] - Get any document\n\n` +
+        `<b>Example:</b>\n` +
+        `<code>/request Build user login with OAuth</code>`;
+      
+      await this.sendFormattedMessage(msg.chat.id, help);
     });
+  }
+  
+  /**
+   * Send formatted message using HTML parse mode
+   */
+  async sendFormattedMessage(chatId, message) {
+    try {
+      await this.telegramBot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      logger.error('Failed to send formatted message:', error);
+      // Fallback to plain text
+      await this.telegramBot.sendMessage(chatId, message.replace(/<[^>]*>/g, ''));
+    }
+  }
+  
+  /**
+   * Escape HTML special characters
+   */
+  escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   async notifyTelegram(message, options = {}) {
