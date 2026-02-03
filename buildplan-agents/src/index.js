@@ -249,29 +249,38 @@ class AgentOrchestrator {
       logger.error('Telegram polling error:', error);
     });
 
-    // /request command - submit new request via Telegram
-    this.telegramBot.onText(/\/request (.+)/, async (msg, match) => {
+    // /request command - submit new request via Telegram (supports multiline)
+    this.telegramBot.onText(/\/request([\s\S]+)/, async (msg, match) => {
       try {
-        const description = match[1];
+        const description = match[1].trim();
+        
+        if (!description) {
+          await this.sendFormattedMessage(msg.chat.id, '❌ Please provide a description after /request');
+          return;
+        }
+        
         const username = msg.from.username || msg.from.first_name;
         
         // Create request file
         const requestId = `REQ-${Date.now()}`;
         this.lastRequestId = requestId; // Store for quick approval
         
-        const requestContent = `# ${requestId}: ${description.substring(0, 50)}\n\n` +
+        // Extract title from description (first line or first 50 chars)
+        const firstLine = description.split('\n')[0].replace(/^#+\s*/, '').trim();
+        const title = firstLine.substring(0, 50) || 'New Request';
+        
+        const requestContent = `# ${requestId}: ${title}\n\n` +
           `**Submitted By**: ${username}\n` +
           `**Date**: ${new Date().toISOString()}\n` +
           `**Priority**: Medium\n` +
           `**Status**: Pending\n\n` +
-          `## What Do You Want Built?\n\n${description}\n\n` +
-          `## Success Criteria\n\n[PM Agent will analyze and define]\n`;
+          `${description}\n`;
         
         const requestPath = path.join(process.env.REQUESTS_DIR, 'pending', `${requestId}.md`);
         fileOps.writeFile(requestPath, requestContent);
         
         await this.sendFormattedMessage(msg.chat.id, 
-          `📝 <b>Request Created</b>\n<i>${description.substring(0, 100)}...</i>\n\n⏳ Analyzing...`
+          `📝 <b>Request Created</b>\n<i>${title}...</i>\n\n⏳ Analyzing...`
         );
         
         logger.info(`Request created: ${requestId} by ${username}`);
@@ -346,9 +355,8 @@ class AgentOrchestrator {
         const content = fileOps.readFile(todoPath);
         
         if (content) {
-          // Format markdown for Telegram (first 3800 chars to leave room for header)
-          const preview = content.substring(0, 3800);
-          const formatted = this.formatMarkdownForTelegram(preview);
+          // Format markdown for Telegram - let sendFormattedMessage handle splitting
+          const formatted = this.formatMarkdownForTelegram(content);
           
           await this.sendFormattedMessage(msg.chat.id, 
             `📋 <b>TODO.md</b>\n\n${formatted}`
@@ -370,12 +378,10 @@ class AgentOrchestrator {
         const content = fileOps.readFile(docPath);
         
         if (content) {
-          const preview = content.substring(0, 3800);
-          
-          // Format markdown files, show raw for others
+          // Format markdown files, show raw for others - let sendFormattedMessage handle splitting
           const formatted = filename.endsWith('.md') ?
-            this.formatMarkdownForTelegram(preview) :
-            `<pre>${this.escapeHtml(preview)}</pre>`;
+            this.formatMarkdownForTelegram(content) :
+            `<pre>${this.escapeHtml(content)}</pre>`;
           
           await this.sendFormattedMessage(msg.chat.id, 
             `📄 <b>${filename}</b>\n\n${formatted}`

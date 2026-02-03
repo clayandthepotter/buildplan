@@ -37,12 +37,24 @@ Be concise, professional, and proactive.`;
       // Notify user
       await this.notifyTelegram(`⏳ <b>Analyzing request...</b>`, { parse_mode: 'HTML' });
 
-      // Check if request uses structured template
-      const isStructured = content.includes('FEATURE:') || content.includes('WHAT:');
+      // Check if request uses structured template or is detailed
+      const isStructured = content.includes('## What Do You Want Built?') || 
+                          content.includes('FEATURE:') || 
+                          content.includes('WHAT:');
       
-      // Analyze with OpenAI
+      // Analyze with OpenAI - provide full context
       const analysisPrompt = isStructured ?
-        `This is a structured request. Analyze and create a task breakdown (max 300 words):\n\n${content}` :
+        `Analyze this detailed request and create a clear, actionable task breakdown.
+
+The request includes specific requirements, success criteria, and context. 
+Provide a concise summary (max 400 words) that includes:
+1. High-level goal
+2. Key tasks/phases identified
+3. Any dependencies or blockers
+4. Recommended approach
+
+Request:
+${content}` :
         `Analyze this request and create a concise task breakdown (max 300 words):\n\n${content}`;
       
       const analysis = await openai.pmAgentChat(this.systemPrompt, analysisPrompt);
