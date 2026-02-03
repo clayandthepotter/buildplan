@@ -210,29 +210,34 @@ ${content}` :
         // Read the request to get the analysis
         const requestContent = fileOps.readFile(requestPath);
         
-        // Move request to approved
-        const approvedPath = path.join(process.env.REQUESTS_DIR, 'approved', requestFile);
-        fileOps.moveFile(requestPath, approvedPath);
+        // Check if there are dependencies that need human input
+        await this.notifyTelegram(`⏳ <b>Checking for required information...</b>`, { parse_mode: 'HTML' });
         
-        await this.notifyTelegram(`✅ Request ${taskId} approved! Creating tasks...`);
+        const requiredInfo = await this.identifyRequiredInformation(requestContent);
         
-        // Create task files from the analysis
-        const tasksCreated = await this.createTasksFromRequest(taskId, requestContent);
-        
-        if (tasksCreated.length > 0) {
+        if (requiredInfo && requiredInfo.length > 0) {
+          // Store the request state and ask for information
+          this.orchestrator.pendingApproval = {
+            taskId,
+            requestPath,
+            requestContent,
+            requiredInfo
+          };
+          
+          const infoRequest = this.formatInformationRequest(requiredInfo);
           await this.notifyTelegram(
-            `🎯 <b>Created ${tasksCreated.length} Tasks</b>\n` +
-            tasksCreated.map(t => `• <code>${t}</code>`).join('\n') +
-            `\n\n🤖 Agents starting work...`,
+            `📝 <b>Information Required</b>\n\n` +
+            `Before I create tasks, I need some details:\n\n` +
+            `${infoRequest}\n\n` +
+            `👉 Reply with <code>/provide [your answers]</code>`,
             { parse_mode: 'HTML' }
           );
           
-          // Assign tasks to agents
-          await this.assignPendingTasks();
-        } else {
-          await this.notifyTelegram(`⚠️ No tasks created. Please check the request format.`);
+          return;
         }
         
+        // No additional info needed, proceed with task creation
+        await this.proceedWithTaskCreation(taskId, requestPath, requestContent);
         return;
       }
 
@@ -264,6 +269,134 @@ ${content}` :
       
     } catch (error) {
       logger.error('Error rejecting task:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Identify information that needs to be gathered from user
+   */
+  async identifyRequiredInformation(requestContent) {
+    try {
+      const prompt = `Analyze this request and identify ANY information that requires human intervention or external setup.
+
+Request:
+${requestContent}
+
+Identify:
+1. API keys or credentials needed (e.g., Clerk API keys, database connection strings)
+2. External service accounts to create (e.g., Clerk account, Supabase account)
+3. Configuration values that can't be determined automatically
+4. Any other prerequisites that need human action
+
+For each item, provide:
+- What is needed
+- Why it's needed
+- Where to get it
+
+Format as:
+ITEM: [description]
+WHY: [reason]
+WHERE: [how to obtain]
+
+If NO information is needed, respond with: "NONE"`;
+      
+      const response = await openai.pmAgentChat(this.systemPrompt, prompt);
+      
+      if (response.trim().toUpperCase() === 'NONE') {
+        return [];
+      }
+      
+      // Parse the response
+      const items = [];
+      const itemRegex = /ITEM:\s*([^\n]+)\nWHY:\s*([^\n]+)\nWHERE:\s*([^\n]+)/g;
+      let match;
+      
+      while ((match = itemRegex.exec(response)) !== null) {
+        items.push({
+          item: match[1].trim(),
+          why: match[2].trim(),
+          where: match[3].trim()
+        });
+      }
+      
+      return items;
+    } catch (error) {
+      logger.error('Error identifying required information:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Format information request for user
+   */
+  formatInformationRequest(requiredInfo) {
+    return requiredInfo.map((info, index) => 
+      `<b>${index + 1}. ${this.escapeHtml(info.item)}</b>\n` +
+      `   <i>Why:</i> ${this.escapeHtml(info.why)}\n` +
+      `   <i>Where:</i> ${this.escapeHtml(info.where)}`
+    ).join('\n\n');
+  }
+  
+  /**
+   * Proceed with task creation after all info is gathered
+   */
+  async proceedWithTaskCreation(taskId, requestPath, requestContent) {
+    // Move request to approved
+    const approvedPath = path.join(process.env.REQUESTS_DIR, 'approved', path.basename(requestPath));
+    fileOps.moveFile(requestPath, approvedPath);
+    
+    await this.notifyTelegram(`✅ Request ${taskId} approved! Creating tasks...`);
+    
+    // Create task files from the analysis
+    const tasksCreated = await this.createTasksFromRequest(taskId, requestContent);
+    
+    if (tasksCreated.length > 0) {
+      await this.notifyTelegram(
+        `🎯 <b>Created ${tasksCreated.length} Tasks</b>\n` +
+        tasksCreated.map(t => `• <code>${t}</code>`).join('\n') +
+        `\n\n🤖 Agents starting work...`,
+        { parse_mode: 'HTML' }
+      );
+      
+      // Assign tasks to agents
+      await this.assignPendingTasks();
+    } else {
+      await this.notifyTelegram(`⚠️ No tasks created. Please check the request format.`);
+    }
+  }
+  
+  /**
+   * Process provided information and proceed with task creation
+   */
+  async provideInformation(information, username) {
+    try {
+      const pending = this.orchestrator.pendingApproval;
+      
+      if (!pending) {
+        await this.notifyTelegram('❌ No pending approval waiting for information');
+        return;
+      }
+      
+      logger.info(`Information provided by ${username} for ${pending.taskId}`);
+      
+      // Store the provided information in the request file
+      const updatedContent = `${pending.requestContent}\n\n---\n\n## Provided Information\n\n${information}\n`;
+      
+      // Update the approved request file
+      const approvedPath = path.join(process.env.REQUESTS_DIR, 'approved', `${pending.taskId}.md`);
+      fileOps.ensureDirectory(path.dirname(approvedPath));
+      fileOps.writeFile(approvedPath, updatedContent);
+      
+      await this.notifyTelegram('✅ <b>Information received!</b> Proceeding with task creation...', { parse_mode: 'HTML' });
+      
+      // Clear pending state and proceed
+      this.orchestrator.pendingApproval = null;
+      
+      await this.proceedWithTaskCreation(pending.taskId, pending.requestPath, updatedContent);
+      
+    } catch (error) {
+      logger.error('Error processing provided information:', error);
       throw error;
     }
   }

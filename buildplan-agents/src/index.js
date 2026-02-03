@@ -13,6 +13,7 @@ class AgentOrchestrator {
     this.telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
     this.pmAgent = null;
     this.db = null;
+    this.pendingApproval = null; // Stores state when waiting for user information
     
     // Specialist AI agents
     this.agents = {
@@ -324,6 +325,23 @@ class AgentOrchestrator {
       }
     });
     
+    // /provide command - submit required information
+    this.telegramBot.onText(/\/provide([\s\S]+)/, async (msg, match) => {
+      try {
+        const information = match[1].trim();
+        
+        if (!information) {
+          await this.sendFormattedMessage(msg.chat.id, '❌ Please provide the requested information');
+          return;
+        }
+        
+        await this.pmAgent.provideInformation(information, msg.from.username);
+      } catch (error) {
+        logger.error('Error in /provide:', error);
+        await this.sendFormattedMessage(msg.chat.id, '❌ <b>Error</b>: Could not process information');
+      }
+    });
+    
     // /approve command - now supports just /approve (uses last request)
     this.telegramBot.onText(/\/approve\s*(.*)/, async (msg, match) => {
       try {
@@ -450,6 +468,7 @@ class AgentOrchestrator {
         `📑 /template - Get structured request template\n` +
         `✏️ /modify [changes] - Request changes to analysis\n` +
         `✅ /approve - Approve latest request\n` +
+        `📝 /provide [info] - Submit required information\n` +
         `📋 /status - Check team progress\n\n` +
         `<b>Info & Reports:</b>\n` +
         `📊 /standup - Daily team report\n` +
@@ -460,7 +479,8 @@ class AgentOrchestrator {
         `2. Submit with <code>/request [details]</code>\n` +
         `3. Review analysis, use <code>/modify</code> if needed\n` +
         `4. Approve with <code>/approve</code>\n` +
-        `5. Watch agents build it!`;
+        `5. Provide any required info if asked\n` +
+        `6. Watch agents build it!`;
       
       await this.sendFormattedMessage(msg.chat.id, help);
     });
