@@ -380,20 +380,49 @@ class AgentOrchestrator {
         await this.sendFormattedMessage(msg.chat.id, '❌ Error reading document');
       }
     });
+    
+    // /template command - show request template
+    this.telegramBot.onText(/\/template/, async (msg) => {
+      const template = `📝 <b>Request Template</b>\n\n` +
+        `Copy and fill out this template for best results:\n\n` +
+        `<pre>` +
+        `/request\n\n` +
+        `<b>FEATURE:</b> [Short name]\n\n` +
+        `<b>WHAT:</b> [What should be built?]\n\n` +
+        `<b>WHY:</b> [Why is this needed?]\n\n` +
+        `<b>WHO:</b> [Who will use this?]\n\n` +
+        `<b>SUCCESS:</b> [How will we know it works?]\n\n` +
+        `<b>NOTES:</b> [Any technical requirements, constraints, or context]` +
+        `</pre>\n\n` +
+        `<b>Example:</b>\n` +
+        `<pre>/request\n\n` +
+        `FEATURE: User Authentication\n\n` +
+        `WHAT: Email/password login system with JWT tokens\n\n` +
+        `WHY: Users need secure accounts to access personalized features\n\n` +
+        `WHO: All web app users\n\n` +
+        `SUCCESS: Users can register, login, and stay logged in across sessions\n\n` +
+        `NOTES: Use bcrypt for passwords, refresh tokens for sessions</pre>`;
+      
+      await this.sendFormattedMessage(msg.chat.id, template);
+    });
 
     // /help command
     this.telegramBot.onText(/\/help/, async (msg) => {
       const help = `<b>🤖 BuildPlan AI Team</b>\n\n` +
         `<b>Core Commands:</b>\n` +
         `📝 /request [description] - Submit work request\n` +
+        `📑 /template - Get structured request template\n` +
         `✅ /approve - Approve latest request\n` +
         `📋 /status - Check team progress\n\n` +
         `<b>Info & Reports:</b>\n` +
         `📊 /standup - Daily team report\n` +
         `📋 /todo - View TODO.md\n` +
         `📄 /doc [filename] - Get any document\n\n` +
-        `<b>Example:</b>\n` +
-        `<code>/request Build user login with OAuth</code>`;
+        `<b>Quick Start:</b>\n` +
+        `1. Type <code>/template</code> to see request format\n` +
+        `2. Submit with <code>/request [details]</code>\n` +
+        `3. Approve with <code>/approve</code>\n` +
+        `4. Watch agents build it!`;
       
       await this.sendFormattedMessage(msg.chat.id, help);
     });

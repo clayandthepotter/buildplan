@@ -37,11 +37,15 @@ Be concise, professional, and proactive.`;
       // Notify user
       await this.notifyTelegram(`⏳ <b>Analyzing request...</b>`, { parse_mode: 'HTML' });
 
+      // Check if request uses structured template
+      const isStructured = content.includes('FEATURE:') || content.includes('WHAT:');
+      
       // Analyze with OpenAI
-      const analysis = await openai.pmAgentChat(
-        this.systemPrompt,
-        `Analyze this request and create a concise task breakdown (max 300 words):\n\n${content}`
-      );
+      const analysisPrompt = isStructured ?
+        `This is a structured request. Analyze and create a task breakdown (max 300 words):\n\n${content}` :
+        `Analyze this request and create a concise task breakdown (max 300 words):\n\n${content}`;
+      
+      const analysis = await openai.pmAgentChat(this.systemPrompt, analysisPrompt);
 
       // Move to in-analysis
       const fileName = path.basename(requestPath);
