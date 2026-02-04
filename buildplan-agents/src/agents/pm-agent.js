@@ -27,55 +27,27 @@ Be concise, professional, and proactive.`;
     try {
       logger.info(`Processing new request: ${requestPath}`);
       
-      // Read request
       const content = fileOps.readFile(requestPath);
       if (!content) {
         await this.notifyTelegram('❌ Could not read request file');
         return;
       }
 
-      // Notify user
-      await this.notifyTelegram(`⏳ <b>Analyzing request...</b>`, { parse_mode: 'HTML' });
-
-      // Check if request uses structured template or is detailed
-      const isStructured = content.includes('## What Do You Want Built?') || 
-                          content.includes('FEATURE:') || 
-                          content.includes('WHAT:');
-      
-      // Analyze with OpenAI - provide full context
-      const analysisPrompt = isStructured ?
-        `Analyze this detailed request and create a clear, actionable task breakdown.
-
-The request includes specific requirements, success criteria, and context. 
-Provide a concise summary (max 400 words) that includes:
-1. High-level goal
-2. Key tasks/phases identified
-3. Any dependencies or blockers
-4. Recommended approach
-
-Request:
-${content}` :
-        `Analyze this request and create a concise task breakdown (max 300 words):\n\n${content}`;
-      
-      const analysis = await openai.pmAgentChat(this.systemPrompt, analysisPrompt);
-
-      // Move to in-analysis
+      // Move request to in-analysis while R&D works on it
       const fileName = path.basename(requestPath);
-      const newPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', fileName);
-      fileOps.moveFile(requestPath, newPath);
+      const inAnalysisPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', fileName);
+      fileOps.moveFile(requestPath, inAnalysisPath);
 
-      // Send breakdown to Telegram - let orchestrator handle splitting for long messages
-      // Convert markdown analysis to HTML for better formatting
-      const formattedAnalysis = this.convertMarkdownToHtml(analysis);
-      
+      // Create an R&D task from this request and assign to RD-Agent
+      const rdTaskId = await this.createRDTaskFromRequest(fileName.replace('.md',''), content);
+
       await this.notifyTelegram(
-        `✅ <b>Analysis Complete</b>\n\n` +
-        `${formattedAnalysis}\n\n` +
-        `👉 Type <code>/approve</code> to proceed`,
+        `🔬 <b>R&D Started</b>\nRequest <code>${fileName}</code> assigned to RD-Agent for prototyping.\n` +
+        `You'll receive a mockup and research doc for approval.`,
         { parse_mode: 'HTML' }
       );
-
-      logger.info(`Request processed: ${fileName}`);
+      
+      logger.info(`R&D task created from ${fileName}: ${rdTaskId}`);
     } catch (error) {
       logger.error('Error processing request:', error);
       await this.notifyTelegram(`❌ Error processing request: ${error.message}`);
@@ -155,40 +127,45 @@ ${content}` :
 
   async getStatus() {
     try {
-      const tasksDir = process.env.TASKS_DIR;
+      const progressTracker = require('../services/progressTracker');
+      const progress = progressTracker.getOverallProgress();
       
-      // List in-progress tasks
-      const inProgress = fileOps.listFiles(path.join(tasksDir, 'in-progress'));
-      const review = fileOps.listFiles(path.join(tasksDir, 'review'));
-      const blocked = fileOps.listFiles(path.join(tasksDir, 'blocked'));
-
-      let status = `📋 *Current Status*\n\n`;
-
-      if (inProgress.length > 0) {
-        status += `*In Progress (${inProgress.length}):*\n`;
-        inProgress.slice(0, 5).forEach(file => {
-          status += `• ${path.basename(file, '.md')}\n`;
-        });
-        status += '\n';
+      if (!progress) {
+        return 'Error loading project status';
       }
 
-      if (review.length > 0) {
-        status += `*Awaiting Review (${review.length}):*\n`;
-        review.forEach(file => {
-          status += `• ${path.basename(file, '.md')} - Type /approve ${path.basename(file, '.md')}\n`;
+      let status = `📋 **Project Status**\n\n`;
+      status += `**Progress**: ${progress.completionPercentage}% complete\n`;
+      status += `**Velocity**: ${progress.velocity} tasks/day\n\n`;
+      
+      status += `**Active Tasks**: ${progress.active}\n`;
+      status += `- 📥 Backlog: ${progress.backlog}\n`;
+      status += `- 🚧 In Progress: ${progress.inProgress}\n`;
+      status += `- 👀 In Review: ${progress.review}\n`;
+      status += `- ✅ Completed: ${progress.completed}\n`;
+      
+      if (progress.blocked > 0) {
+        status += `- 🚫 Blocked: ${progress.blocked}\n\n`;
+        status += `**⚠️ Blockers**:\n`;
+        progress.blockers.slice(0, 3).forEach(blocker => {
+          status += `• ${blocker.taskId}: ${blocker.reason}\n`;
         });
-        status += '\n';
+        if (progress.blockers.length > 3) {
+          status += `... and ${progress.blockers.length - 3} more\n`;
+        }
+      }
+      
+      // Check for stale tasks
+      const staleTasks = progressTracker.getStaleTasks();
+      if (staleTasks.length > 0) {
+        status += `\n⏰ **Stale Tasks** (in-progress > 3 days):\n`;
+        staleTasks.slice(0, 3).forEach(taskId => {
+          status += `• ${taskId}\n`;
+        });
       }
 
-      if (blocked.length > 0) {
-        status += `*Blocked (${blocked.length}):*\n`;
-        blocked.forEach(file => {
-          status += `• ${path.basename(file, '.md')}\n`;
-        });
-      }
-
-      if (inProgress.length === 0 && review.length === 0 && blocked.length === 0) {
-        status += `No active tasks. Submit a request with /request [description]`;
+      if (progress.total === 0) {
+        status += `\nNo active tasks. Submit a request to get started.`;
       }
 
       return status;
@@ -198,59 +175,102 @@ ${content}` :
     }
   }
 
+  /**
+   * Get detailed progress report
+   * @returns {string} Formatted progress report
+   */
+  async getProgressReport() {
+    try {
+      const progressTracker = require('../services/progressTracker');
+      return progressTracker.generateProgressReport();
+    } catch (error) {
+      logger.error('Error generating progress report:', error);
+      return 'Error generating progress report';
+    }
+  }
+
+  /**
+   * Get blockers list
+   * @returns {string} Formatted blockers report
+   */
+  async getBlockers() {
+    try {
+      const progressTracker = require('../services/progressTracker');
+      const blockers = progressTracker.getBlockersList();
+      
+      if (blockers.length === 0) {
+        return '✅ No blocked tasks';
+      }
+      
+      let report = `🚫 **Blocked Tasks** (${blockers.length})\n\n`;
+      for (const blocker of blockers) {
+        report += `**${blocker.taskId}**: ${blocker.title}\n`;
+        report += `Reason: ${blocker.reason}\n`;
+        report += `Since: ${new Date(blocker.blockedSince).toLocaleDateString()}\n\n`;
+      }
+      
+      return report;
+    } catch (error) {
+      logger.error('Error getting blockers:', error);
+      return 'Error loading blockers';
+    }
+  }
+
   async approveTask(taskId, username) {
     try {
       logger.info(`Approving ${taskId} by ${username}`);
-      
-      // Check if it's a request
-      const requestFile = `${taskId}.md`;
-      const requestPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', requestFile);
-      
-      if (fs.existsSync(requestPath)) {
-        // Read the request to get the analysis
-        const requestContent = fileOps.readFile(requestPath);
-        
-        // Check if there are dependencies that need human input
-        await this.notifyTelegram(`⏳ <b>Checking for required information...</b>`, { parse_mode: 'HTML' });
-        
-        const requiredInfo = await this.identifyRequiredInformation(requestContent);
-        
-        if (requiredInfo && requiredInfo.length > 0) {
-          // Store the request state and ask for information
-          this.orchestrator.pendingApproval = {
-            taskId,
-            requestPath,
-            requestContent,
-            requiredInfo
-          };
-          
-          const infoRequest = this.formatInformationRequest(requiredInfo);
-          await this.notifyTelegram(
-            `📝 <b>Information Required</b>\n\n` +
-            `Before I create tasks, I need some details:\n\n` +
-            `${infoRequest}\n\n` +
-            `👉 Reply with <code>/provide [your answers]</code>`,
-            { parse_mode: 'HTML' }
-          );
-          
+
+      // If approving an R&D task in review, finalize and create sprints/tasks
+      const rdTaskPath = path.join(process.env.TASKS_DIR, 'review', `${taskId}.md`);
+      if (fs.existsSync(rdTaskPath)) {
+        const content = fileOps.readFile(rdTaskPath) || '';
+        const typeMatch = content.match(/type:\s*([^\n]+)/);
+        const type = typeMatch ? typeMatch[1].trim().toLowerCase() : '';
+        if (type === 'rd' || type === 'research') {
+          // Move to completed first
+          const completedPath = path.join(process.env.TASKS_DIR, 'completed', `${taskId}.md`);
+          fileOps.moveFile(rdTaskPath, completedPath);
+          await this.notifyTelegram(`✅ R&D ${taskId} approved. Creating sprints and tasks from research...`);
+
+          // Generate sprints and tasks
+          const sprintPlanner = require('../services/sprintPlanner');
+          const taskManager = require('../services/taskManager');
+          const sprints = await sprintPlanner.createFromRD(taskId);
+          const created = await taskManager.createTasksFromSprints(sprints, taskId);
+          await this.notifyTelegram(`🗂️ Created ${created.length} tasks from R&D. Assigning to agents...`);
+          await this.assignPendingTasks();
           return;
         }
-        
-        // No additional info needed, proceed with task creation
+      }
+
+      // Check if it's a request approval (legacy)
+      const requestFile = `${taskId}.md`;
+      const requestPath = path.join(process.env.REQUESTS_DIR, 'in-analysis', requestFile);
+      if (fs.existsSync(requestPath)) {
+        const requestContent = fileOps.readFile(requestPath);
+        await this.notifyTelegram(`⏳ <b>Checking for required information...</b>`, { parse_mode: 'HTML' });
+        const requiredInfo = await this.identifyRequiredInformation(requestContent);
+        if (requiredInfo && requiredInfo.length > 0) {
+          this.orchestrator.pendingApproval = { taskId, requestPath, requestContent, requiredInfo };
+          const infoRequest = this.formatInformationRequest(requiredInfo);
+          await this.notifyTelegram(
+            `📝 <b>Information Required</b>\n\nBefore I create tasks, I need some details:\n\n${infoRequest}\n\n👉 Reply with <code>/provide [your answers]</code>`,
+            { parse_mode: 'HTML' }
+          );
+          return;
+        }
         await this.proceedWithTaskCreation(taskId, requestPath, requestContent);
         return;
       }
 
-      // Check if it's a task
+      // Otherwise, approve a normal task in review
       const taskPath = path.join(process.env.TASKS_DIR, 'review', `${taskId}.md`);
-      
       if (fs.existsSync(taskPath)) {
         const completedPath = path.join(process.env.TASKS_DIR, 'completed', `${taskId}.md`);
         fileOps.moveFile(taskPath, completedPath);
-        
         await this.notifyTelegram(`✅ Task ${taskId} approved and completed!`);
       } else {
-        await this.notifyTelegram(`❌ Could not find ${taskId} in review`);
+        await this.notifyTelegram(`❌ Could not find ${taskId} in review or request in analysis`);
       }
 
     } catch (error) {
@@ -572,6 +592,22 @@ ${task.description}
   /**
    * Assign pending tasks to available agents
    */
+  async createRDTaskFromRequest(requestId, content) {
+    // Make an RD task in backlog for RD-Agent
+    const taskId = `TASK-${requestId.replace('REQ-','')}-RD`;
+    const task = {
+      type: 'rd',
+      title: `R&D for ${requestId}`,
+      description: `Create research & mockup for request ${requestId}.\n\n${content.substring(0, 1000)}`
+    };
+    const taskContent = this.formatTaskFile(taskId, requestId, task);
+    const taskPath = path.join(process.env.TASKS_DIR, 'backlog', `${taskId}.md`);
+    fileOps.ensureDirectory(path.dirname(taskPath));
+    fileOps.writeFile(taskPath, taskContent);
+    await this.assignPendingTasks();
+    return taskId;
+  }
+
   async assignPendingTasks() {
     try {
       const backlogDir = path.join(process.env.TASKS_DIR, 'backlog');
@@ -681,6 +717,115 @@ ${task.description}
     html = html.replace(/^\d+\.\s+(.+)$/gm, '  $1');
     
     return html;
+  }
+
+  /**
+   * Handle conversational queries from user
+   * @param {string} query - The user's natural language question
+   * @returns {Promise<string>} - Formatted response
+   */
+  async handleConversationalQuery(query) {
+    try {
+      logger.info(`Handling conversational query: ${query}`);
+      
+      // Gather context for the PM
+      const context = await this.gatherProjectContext();
+      
+      // Build comprehensive prompt
+      const conversationalPrompt = `You are the PM for the BuildPlan AI development team. The user is asking you a question. Respond as a real PM would - be helpful, actionable, and use the context provided.
+
+## Current Project Context:
+${context}
+
+## User's Question:
+${query}
+
+Provide a clear, actionable response. If discussing blockers, provide specific details about what's wrong and what needs to be done. If asked about status, give a comprehensive overview. Be conversational but professional.`;
+      
+      const response = await openai.pmAgentChat(this.systemPrompt, conversationalPrompt);
+      
+      return response;
+      
+    } catch (error) {
+      logger.error('Error handling conversational query:', error);
+      return `I encountered an error processing your question: ${error.message}. Please try rephrasing or use a specific command like /status or /blockers.`;
+    }
+  }
+  
+  /**
+   * Gather comprehensive project context for conversational queries
+   * @returns {Promise<string>} - Formatted context
+   */
+  async gatherProjectContext() {
+    try {
+      const PMConversation = require('../services/pmConversation');
+      const pmConvo = new PMConversation();
+      
+      // Get task counts
+      const tasksDir = process.env.TASKS_DIR;
+      const inProgress = fileOps.listFiles(path.join(tasksDir, 'in-progress'));
+      const review = fileOps.listFiles(path.join(tasksDir, 'review'));
+      const blocked = fileOps.listFiles(path.join(tasksDir, 'blocked'));
+      const backlog = fileOps.listFiles(path.join(tasksDir, 'backlog'));
+      const completed = fileOps.listFiles(path.join(tasksDir, 'completed'));
+      
+      let context = `### Task Summary:
+- In Progress: ${inProgress.length}
+- Backlog: ${backlog.length}
+- Blocked: ${blocked.length}
+- Awaiting Review: ${review.length}
+- Completed: ${completed.length}\n\n`;
+      
+      // Get blocked tasks details
+      if (blocked.length > 0) {
+        const blockedTasks = await pmConvo.getBlockedTasks();
+        context += `### Blocked Tasks Details:\n`;
+        
+        for (const task of blockedTasks) {
+          context += `**${task.taskId}:**\n`;
+          context += `- Title: ${task.title}\n`;
+          context += `- Reason: ${task.reason}\n`;
+          if (task.details) {
+            const truncated = task.details.length > 300 
+              ? task.details.substring(0, 300) + '...' 
+              : task.details;
+            context += `- Details: ${truncated}\n`;
+          }
+          context += `\n`;
+        }
+      }
+      
+      // Get in-progress tasks
+      if (inProgress.length > 0) {
+        context += `### In-Progress Tasks:\n`;
+        for (const taskPath of inProgress.slice(0, 5)) {
+          const taskId = path.basename(taskPath, '.md');
+          const content = fileOps.readFile(taskPath);
+          if (content) {
+            const titleMatch = content.match(/title:\s*([^\n]+)/);
+            const assignedMatch = content.match(/assigned_to:\s*([^\n]+)/);
+            context += `- ${taskId}: ${titleMatch ? titleMatch[1] : 'Unknown'} (${assignedMatch ? assignedMatch[1] : 'unassigned'})\n`;
+          }
+        }
+        context += `\n`;
+      }
+      
+      // Get recent requests
+      const pendingRequests = fileOps.listFiles(path.join(process.env.REQUESTS_DIR, 'pending'));
+      const analysisRequests = fileOps.listFiles(path.join(process.env.REQUESTS_DIR, 'in-analysis'));
+      
+      if (pendingRequests.length > 0 || analysisRequests.length > 0) {
+        context += `### Pending Requests:\n`;
+        context += `- Awaiting analysis: ${pendingRequests.length}\n`;
+        context += `- In analysis: ${analysisRequests.length}\n\n`;
+      }
+      
+      return context;
+      
+    } catch (error) {
+      logger.error('Error gathering context:', error);
+      return 'Unable to gather full context due to an error.';
+    }
   }
 
   async notifyTelegram(message, options = {}) {

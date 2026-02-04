@@ -1,0 +1,206 @@
+name: Promote to PRE-PROD
+
+on:
+  workflow_dispatch:
+    inputs:
+      qa_tag:
+        description: 'QA tag to promote (e.g., qa-20260204-120000)'
+        required: true
+
+jobs:
+  qa-tests:
+    name: Run QA Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout QA branch
+        uses: actions/checkout@v4
+        with:
+          ref: qa
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full test suite
+        run: |
+          npm run test:unit || npm test
+          npm run test:integration --if-present
+
+      - name: Run E2E tests
+        run: npm run test:e2e --if-present
+        env:
+          BASE_URL: https://qa.buildplan.dev
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-test-results
+          path: |
+            test-results/
+            playwright-report/
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: qa
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Run Snyk scan
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'BuildPlan'
+          path: '.'
+          format: 'HTML'
+
+  performance-check:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: qa
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run performance tests
+        run: npm run test:perf --if-present
+        env:
+          BASE_URL: https://qa.buildplan.dev
+
+  promote:
+    name: Promote to PRE-PROD
+    runs-on: ubuntu-latest
+    needs: [qa-tests, security-scan, performance-check]
+    if: success()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "BuildPlan Bot"
+          git config user.email "bot@buildplan.dev"
+
+      - name: Merge qa into pre-production
+        run: |
+          git checkout pre-production || git checkout -b pre-production
+          git merge --no-ff qa -m "Promote QA to PRE-PROD - $(date +'%Y-%m-%d %H:%M')"
+
+      - name: Push to PRE-PROD branch
+        run: git push origin pre-production
+
+      - name: Create deployment tag
+        run: |
+          TAG_NAME="preprod-$(date +'%Y%m%d-%H%M%S')"
+          git tag -a "$TAG_NAME" -m "PRE-PROD deployment $(date +'%Y-%m-%d %H:%M')"
+          git push origin "$TAG_NAME"
+
+  deploy-preprod:
+    name: Deploy to PRE-PROD Environment
+    runs-on: ubuntu-latest
+    needs: promote
+    environment:
+      name: pre-production
+      url: https://preprod.buildplan.dev
+    steps:
+      - name: Checkout PRE-PROD branch
+        uses: actions/checkout@v4
+        with:
+          ref: pre-production
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for PRE-PROD
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_API_URL: ${{ secrets.PREPROD_API_URL }}
+
+      - name: Deploy to Vercel (PRE-PROD)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          alias-domains: preprod.buildplan.dev
+
+  smoke-tests:
+    name: Run Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy-preprod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: pre-production
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run smoke tests
+        run: npm run test:smoke --if-present
+        env:
+          BASE_URL: https://preprod.buildplan.dev
+
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [smoke-tests]
+    if: always()
+    steps:
+      - name: Send notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          text: |
+            PRE-PROD Deployment Status: ${{ job.status }}
+            Branch: qa → pre-production
+            Environment: https://preprod.buildplan.dev
+            Ready for manual testing and PROD promotion
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,13 @@
+{
+  "id": "TASK-1770224129319-jnsyg9gxt",
+  "sprintId": "SPRINT-1770224129316",
+  "rdTaskId": "TASK-TEST-1770224129283-RD",
+  "type": "frontend",
+  "title": "Build UI components",
+  "priority": "medium",
+  "status": "pending",
+  "assignedAgent": "frontend-agent",
+  "createdAt": "2026-02-04T16:55:29.319Z",
+  "dependencies": [],
+  "metadata": {}
+}

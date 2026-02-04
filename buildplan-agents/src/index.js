@@ -11,6 +11,17 @@ require('dotenv').config();
 class AgentOrchestrator {
   constructor() {
     this.telegramBot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+    // If this bot token was previously configured for webhook delivery, Telegram will
+    // reject getUpdates polling with a 409 conflict. We proactively clear any webhook
+    // so local dev polling "just works".
+    this._ensurePollingMode = async () => {
+      try {
+        await this.telegramBot.deleteWebHook({ drop_pending_updates: true });
+      } catch (e) {
+        // Non-fatal; polling may still work if no webhook is set.
+        logger.warn('Could not delete Telegram webhook (continuing):', e.message || e);
+      }
+    };
     this.pmAgent = null;
     this.db = null;
     this.pendingApproval = null; // Stores state when waiting for user information
@@ -34,6 +45,11 @@ class AgentOrchestrator {
       await this.setupDatabase();
       logger.info('✅ Database initialized');
       
+      // 1b. Setup Team Communication Service
+      const TeamCommsService = require('./services/teamComms');
+      this.teamComms = new TeamCommsService(this);
+      logger.info('✅ Team Communication service loaded');
+      
       // 2. Load PM Agent
       const { PMAgent } = require('./agents/pm-agent');
       this.pmAgent = new PMAgent(this);
@@ -44,6 +60,7 @@ class AgentOrchestrator {
       logger.info('✅ Specialist agents loaded');
       
       // 3. Setup Telegram bot
+      await this._ensurePollingMode();
       this.setupTelegramHandlers();
       logger.info('✅ Telegram bot ready');
       
@@ -60,7 +77,10 @@ class AgentOrchestrator {
       logger.info('✅ PM Agent running');
       
       // 7. Send startup notification
-      await this.notifyTelegram('🚀 BuildPlan AI Team is now online!\n\nSend /help for available commands.');
+      await this.teamComms.teamAnnouncement('🚀 <b>BuildPlan AI Team is now online!</b>\n\n' +
+        '👥 All agents are ready to collaborate\n' +
+        '💬 You can see all team communication here\n' +
+        '💡 Send /help for available commands');
       
       logger.info('✅ Agent Orchestrator fully operational');
     } catch (error) {
@@ -72,9 +92,11 @@ class AgentOrchestrator {
   loadSpecialistAgents() {
     const BackendAgent = require('./agents/backend-agent');
     const ArchitectAgent = require('./agents/architect-agent');
+    const RDAgent = require('./agents/rd-agent');
     
     this.agents.backend = new BackendAgent(this);
     this.agents.architect = new ArchitectAgent(this);
+    this.agents.rd = new RDAgent(this);
     
     // TODO: Add remaining agents as they're implemented
     // this.agents.frontend = new FrontendAgent(this);
@@ -82,7 +104,7 @@ class AgentOrchestrator {
     // this.agents.qa = new QAAgent(this);
     // this.agents.docs = new DocsAgent(this);
     
-    logger.info('Loaded agents: Backend, Architect');
+    logger.info('Loaded agents: Backend, Architect, R&D');
   }
   
   /**
@@ -90,6 +112,8 @@ class AgentOrchestrator {
    */
   getAgentForTask(taskType) {
     const agentMap = {
+      'rd': this.agents.rd,
+      'research': this.agents.rd,
       'design': this.agents.architect,
       'architecture': this.agents.architect,
       'backend': this.agents.backend,
@@ -388,6 +412,39 @@ class AgentOrchestrator {
       }
     });
 
+    // /blockers command - show all blocked tasks
+    this.telegramBot.onText(/\/blockers/, async (msg) => {
+      try {
+        const PMConversation = require('./services/pmConversation');
+        const pmConvo = new PMConversation();
+        
+        const blockedTasks = await pmConvo.getBlockedTasks();
+        const summary = pmConvo.formatBlockedTasksSummary(blockedTasks);
+        
+        await this.sendFormattedMessage(msg.chat.id, summary);
+      } catch (error) {
+        logger.error('Error in /blockers:', error);
+        await this.sendFormattedMessage(msg.chat.id, '❌ Error retrieving blocked tasks');
+      }
+    });
+
+    // /blocker [task-id] - get detailed blocker information for a specific task
+    this.telegramBot.onText(/\/blocker (.+)/, async (msg, match) => {
+      try {
+        const taskId = match[1].trim();
+        const PMConversation = require('./services/pmConversation');
+        const pmConvo = new PMConversation();
+        
+        const taskInfo = await pmConvo.queryTask(taskId);
+        const formattedInfo = pmConvo.formatTaskInfo(taskInfo);
+        
+        await this.sendFormattedMessage(msg.chat.id, formattedInfo);
+      } catch (error) {
+        logger.error('Error in /blocker:', error);
+        await this.sendFormattedMessage(msg.chat.id, '❌ Error retrieving task information');
+      }
+    });
+
     // /todo command - show TODO.md
     this.telegramBot.onText(/\/todo/, async (msg) => {
       try {
@@ -463,6 +520,10 @@ class AgentOrchestrator {
     // /help command
     this.telegramBot.onText(/\/help/, async (msg) => {
       const help = `<b>🤖 BuildPlan AI Team</b>\n\n` +
+        `💬 <b>Talk to your PM!</b> Just send a message:\n` +
+        `   <i>"What blockers do we have?"</i>\n` +
+        `   <i>"What's the status of the project?"</i>\n` +
+        `   <i>"What should we work on next?"</i>\n\n` +
         `<b>Core Commands:</b>\n` +
         `📝 /request [description] - Submit work request\n` +
         `📑 /template - Get structured request template\n` +
@@ -474,15 +535,58 @@ class AgentOrchestrator {
         `📊 /standup - Daily team report\n` +
         `📋 /todo - View TODO.md\n` +
         `📄 /doc [filename] - Get any document\n\n` +
+        `<b>Debugging & Blockers:</b>\n` +
+        `🚫 /blockers - List all blocked tasks\n` +
+        `🔍 /blocker [task-id] - Get detailed blocker info\n\n` +
         `<b>Quick Start:</b>\n` +
         `1. Type <code>/template</code> to see request format\n` +
         `2. Submit with <code>/request [details]</code>\n` +
         `3. Review analysis, use <code>/modify</code> if needed\n` +
         `4. Approve with <code>/approve</code>\n` +
         `5. Provide any required info if asked\n` +
-        `6. Watch agents build it!`;
+        `6. Watch agents build it!\n` +
+        `7. If tasks are blocked, just ask me!`;
       
       await this.sendFormattedMessage(msg.chat.id, help);
+    });
+    
+    // Catch-all: Handle conversational messages (non-commands)
+    this.telegramBot.on('message', async (msg) => {
+      try {
+        // Always log chat metadata to help configure group chat routing
+        // (especially the numeric chat.id for supergroups: -100xxxxxxxxxx)
+        const chatTitle = msg.chat && (msg.chat.title || msg.chat.username || msg.chat.first_name);
+        logger.info(`[Telegram] inbound chat.id=${msg.chat?.id} type=${msg.chat?.type} title=${chatTitle || ''}`);
+
+        // Skip if it's a command (starts with /)
+        if (msg.text && msg.text.startsWith('/')) {
+          return;
+        }
+
+        // Skip if no text
+        if (!msg.text || msg.text.trim().length === 0) {
+          return;
+        }
+
+        logger.info(`Conversational query from ${msg.from.username}: ${msg.text}`);
+
+        // Show typing indicator
+        await this.telegramBot.sendChatAction(msg.chat.id, 'typing');
+
+        // Route to PM Agent for conversational response
+        const response = await this.pmAgent.handleConversationalQuery(msg.text);
+
+        // Convert markdown response to HTML
+        const formattedResponse = this.pmAgent.convertMarkdownToHtml(response);
+
+        await this.sendFormattedMessage(msg.chat.id, formattedResponse);
+
+      } catch (error) {
+        logger.error('Error in conversational handler:', error);
+        await this.sendFormattedMessage(msg.chat.id, 
+          '❌ Sorry, I encountered an error processing your message. Please try using a specific command like /status or /blockers.'
+        );
+      }
     });
   }
   

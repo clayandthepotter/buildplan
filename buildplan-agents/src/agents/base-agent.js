@@ -180,20 +180,60 @@ class BaseAgent {
   }
 
   /**
-   * Notify PM agent and Telegram of progress
+   * Send message to team channel
+   */
+  async sendToTeam(message, options = {}) {
+    if (this.orchestrator.teamComms) {
+      return this.orchestrator.teamComms.sendMessage(this.role, message, options);
+    }
+    // Fallback if teamComms not available
+    return this.orchestrator.notifyTelegram(
+      `<b>${this.role}</b>\n${message}`,
+      { parse_mode: 'HTML' }
+    );
+  }
+  
+  /**
+   * Announce what I'm working on
+   */
+  async announce(action, taskId = null) {
+    if (this.orchestrator.teamComms) {
+      return this.orchestrator.teamComms.announceAction(this.role, action, taskId);
+    }
+  }
+  
+  /**
+   * Share progress with the team
+   */
+  async shareProgress(update, percentComplete = null) {
+    if (this.orchestrator.teamComms) {
+      return this.orchestrator.teamComms.shareProgress(this.role, update, percentComplete);
+    }
+  }
+  
+  /**
+   * Report a blocker to the team
+   */
+  async reportBlockerToTeam(blocker, taskId) {
+    if (this.orchestrator.teamComms) {
+      return this.orchestrator.teamComms.reportBlocker(this.role, blocker, taskId);
+    }
+  }
+  
+  /**
+   * Ask for help from another agent
+   */
+  async askForHelp(toAgent, request) {
+    if (this.orchestrator.teamComms) {
+      return this.orchestrator.teamComms.requestHelp(this.role, toAgent, request);
+    }
+  }
+  
+  /**
+   * Legacy method - kept for compatibility
    */
   async notifyPM(message, sendToTelegram = true) {
-    if (sendToTelegram) {
-      // Send formatted message to Telegram
-      const emoji = message.includes('✅') ? '' : 
-                    message.includes('🚀') ? '' :
-                    message.includes('🔧') ? '' : '💬';
-      return this.orchestrator.notifyTelegram(
-        `${emoji} <b>${this.role}</b>\n${message}`,
-        { parse_mode: 'HTML' }
-      );
-    }
-    return this.orchestrator.notifyTelegram(`[${this.role}] ${message}`);
+    return this.sendToTeam(message);
   }
 
   /**
@@ -267,8 +307,24 @@ class BaseAgent {
       // Execute task (implemented by subclass)
       const result = await this.executeTask(taskPath);
 
-      if (!result) {
-        await this.blockTask(taskPath, 'Execution failed');
+      // Handle result - can be boolean (legacy) or object with details
+      const success = typeof result === 'object' ? result.success : result;
+      
+      if (!success) {
+        let blockReason = 'Execution failed';
+        let blockDetails = null;
+        
+        if (typeof result === 'object') {
+          blockReason = result.error || blockReason;
+          blockDetails = result.details;
+        }
+        
+        // Append details to task file if available
+        if (blockDetails) {
+          await this.updateTaskProgress(taskPath, `Error details:\n${blockDetails}`);
+        }
+        
+        await this.blockTask(taskPath, blockReason);
         return false;
       }
 

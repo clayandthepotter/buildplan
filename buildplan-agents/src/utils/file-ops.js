@@ -59,6 +59,27 @@ class FileOps {
       fs.mkdirSync(directory, { recursive: true });
     }
   }
+
+  fileExists(filePath) {
+    try {
+      return fs.existsSync(filePath);
+    } catch (error) {
+      logger.error(`Error checking if file exists ${filePath}:`, error);
+      return false;
+    }
+  }
+
+  readDir(directory) {
+    try {
+      if (!fs.existsSync(directory)) {
+        return [];
+      }
+      return fs.readdirSync(directory);
+    } catch (error) {
+      logger.error(`Error reading directory ${directory}:`, error);
+      return [];
+    }
+  }
 }
 
 module.exports = new FileOps();

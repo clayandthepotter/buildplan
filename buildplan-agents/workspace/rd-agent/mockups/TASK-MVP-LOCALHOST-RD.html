@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>R&D for REQ-MVP-LOCALHOST - Mockup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>body{font-family:Inter,system-ui,Segoe UI,Arial;margin:24px;background:#0b0f1a;color:#e6edf3} .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;max-width:960px;margin:auto} .row{display:flex;gap:16px;margin-top:16px} .btn{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer} input,select{background:#0b1220;border:1px solid #243b53;color:#e6edf3;border-radius:8px;padding:10px;width:100%}</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script>
+      const e = React.createElement;
+      function App(){
+        return e('div',{className:'card'},[
+          e('h2',{key:1},'R&D for REQ-MVP-LOCALHOST'),
+          e('div',{className:'row',key:2},[
+            e('input',{placeholder:'Title',key:21}),
+            e('select',{key:22},[
+              e('option',{key:'opt1'},'Low'),
+              e('option',{key:'opt2'},'Medium'),
+              e('option',{key:'opt3'},'High')
+            ])
+          ]),
+          e('div',{className:'row',key:3},[
+            e('input',{placeholder:'Description... (static mockup)',key:31})
+          ]),
+          e('button',{className:'btn',key:4,onClick:()=>alert('Demo only')},'Submit')
+        ])
+      }
+      ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+    </script>
+  </body>
+</html>

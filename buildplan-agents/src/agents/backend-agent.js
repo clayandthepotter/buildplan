@@ -1,6 +1,10 @@
 const BaseAgent = require('./base-agent');
 const path = require('path');
 const logger = require('../utils/logger');
+const GitOps = require('../services/gitOps');
+const TestRunner = require('../services/testRunner');
+const SkillLoader = require('../services/skillLoader');
+const AgentCollaboration = require('../services/agentCollaboration');
 
 /**
  * Backend Engineer Agent
@@ -13,6 +17,8 @@ class BackendAgent extends BaseAgent {
       'Backend-Agent',
       'docs/AI_WORKFORCE_SYSTEM.md' // Contains backend agent prompt
     );
+    this.currentBranch = null;
+    this.workspaceRoot = path.join(process.env.PROJECT_ROOT || '', 'workspace', 'backend-agent');
   }
 
   /**
@@ -30,6 +36,19 @@ class BackendAgent extends BaseAgent {
       const taskId = task.metadata.id || path.basename(taskPath, '.md');
       
       logger.info(`${this.role}: Executing task ${taskId}`);
+      
+      // Update collaboration status
+      AgentCollaboration.updateAgentStatus('backend-agent', 'working', {
+        taskId,
+        phase: 'starting'
+      });
+      
+      // Load relevant skills
+      await this.loadSkills(task);
+      
+      // Create feature branch
+      this.currentBranch = await this.createFeatureBranch(taskId, task.metadata.title);
+      
       await this.updateTaskProgress(taskPath, 'Analyzing requirements');
 
       // Generate code using OpenAI
@@ -38,17 +57,22 @@ class BackendAgent extends BaseAgent {
 
       if (!generatedCode) {
         logger.error(`${this.role}: Failed to generate code`);
-        return false;
+        return { success: false, error: 'Code generation failed' };
       }
 
       await this.updateTaskProgress(taskPath, 'Code generated, preparing files');
+      
+      AgentCollaboration.updateAgentStatus('backend-agent', 'working', {
+        taskId,
+        phase: 'code-generation'
+      });
 
       // Parse generated code into files
       const files = this.parseGeneratedCode(generatedCode);
       
       if (files.length === 0) {
         logger.error(`${this.role}: No files extracted from generated code`);
-        return false;
+        return { success: false, error: 'No files extracted from generated code' };
       }
 
       logger.info(`${this.role}: Generated ${files.length} files`);
@@ -59,24 +83,51 @@ class BackendAgent extends BaseAgent {
 
       // Install dependencies if needed
       await this.updateTaskProgress(taskPath, 'Checking dependencies');
-      const depsInstalled = await this.installRequiredDependencies(files);
+      const depsResult = await this.installRequiredDependencies(files);
       
-      if (!depsInstalled) {
+      if (!depsResult) {
         logger.warn(`${this.role}: Some dependencies may not have installed`);
+        return { success: false, error: 'Failed to install required dependencies' };
       }
 
       // Run tests if they exist
       await this.updateTaskProgress(taskPath, 'Running tests');
-      const testsPass = await this.runTests(files);
       
-      if (!testsPass) {
+      AgentCollaboration.updateAgentStatus('backend-agent', 'working', {
+        taskId,
+        phase: 'testing'
+      });
+      
+      const testResult = await this.runTests(files);
+      
+      if (!testResult.success) {
         logger.error(`${this.role}: Tests failed, not creating PR`);
         await this.updateTaskProgress(taskPath, 'Tests failed - task blocked');
-        return false;
+        
+        // Report blocker
+        await AgentCollaboration.reportBlocker({
+          taskId,
+          agentName: 'backend-agent',
+          type: 'technical',
+          description: `Tests failed: ${testResult.error || 'Unknown test failure'}`,
+          severity: 'high'
+        });
+        
+        AgentCollaboration.updateAgentStatus('backend-agent', 'blocked', {
+          taskId,
+          error: testResult.error
+        });
+        
+        return { 
+          success: false, 
+          error: `Tests failed: ${testResult.error || 'Unknown test failure'}`,
+          details: testResult.output
+        };
       }
 
       // Create PR with generated code
       await this.updateTaskProgress(taskPath, 'Creating GitHub PR');
+      await this.shareProgress('Creating pull request...', 95);
       
       const prTitle = `[${taskId}] ${task.metadata.title || 'Backend implementation'}`;
       const prBody = this.buildPRDescription(task, files);
@@ -85,17 +136,48 @@ class BackendAgent extends BaseAgent {
 
       if (!pr) {
         logger.error(`${this.role}: Failed to create PR`);
-        return false;
+        await this.reportBlockerToTeam('Failed to create GitHub PR', taskId);
+        return { success: false, error: 'Failed to create GitHub PR' };
       }
 
       // Mark task complete
       await this.completeTask(taskPath, pr.url);
+      
+      // Update status to idle
+      AgentCollaboration.updateAgentStatus('backend-agent', 'idle');
+      
+      // Celebrate!
+      if (this.orchestrator.teamComms) {
+        await this.orchestrator.teamComms.celebrate(
+          this.role, 
+          `Completed ${taskId}! Pull request created and ready for review. 🎉`
+        );
+      }
 
-      return true;
+      return { 
+        success: true, 
+        branch: this.currentBranch,
+        pr: pr.url,
+        filesChanged: files.length
+      };
 
     } catch (error) {
       logger.error(`${this.role}: Error executing task:`, error.message);
-      return false;
+      
+      // Report blocker on exception
+      await AgentCollaboration.reportBlocker({
+        taskId: taskPath,
+        agentName: 'backend-agent',
+        type: 'technical',
+        description: error.message,
+        severity: 'high'
+      });
+      
+      AgentCollaboration.updateAgentStatus('backend-agent', 'blocked', {
+        error: error.message
+      });
+      
+      return { success: false, error: `Exception: ${error.message}`, details: error.stack };
     }
   }
 
@@ -288,7 +370,7 @@ Start generating now:`;
       
       if (testFiles.length === 0) {
         logger.info(`${this.role}: No test files generated, skipping tests`);
-        return true; // Not a failure if no tests exist
+        return { success: true, skipped: true };
       }
       
       logger.info(`${this.role}: Running ${testFiles.length} test file(s)`);
@@ -297,15 +379,24 @@ Start generating now:`;
       const result = await this.shell.runTests();
       
       if (!result.success) {
-        logger.error(`${this.role}: Tests failed:`, result.stderr);
-        return false;
+        const errorOutput = result.stderr || result.stdout || 'No error output captured';
+        logger.error(`${this.role}: Tests failed:`, errorOutput);
+        return { 
+          success: false, 
+          error: 'Test suite failed',
+          output: errorOutput
+        };
       }
       
       logger.info(`${this.role}: All tests passed!`);
-      return true;
+      return { success: true, output: result.stdout };
     } catch (error) {
       logger.error(`${this.role}: Error running tests:`, error.message);
-      return false;
+      return { 
+        success: false, 
+        error: `Test execution error: ${error.message}`,
+        details: error.stack
+      };
     }
   }
   
@@ -340,6 +431,77 @@ Backend Agent (AI)
 
 ---
 *This PR was automatically generated by the BuildPlan AI team.*`;
+  }
+  
+  /**
+   * Load relevant skills for the task
+   */
+  async loadSkills(task) {
+    const skillCategories = ['backend'];
+    
+    const content = (task.content || '').toLowerCase();
+    if (content.includes('database') || content.includes('prisma')) {
+      skillCategories.push('database');
+    }
+    if (content.includes('api') || content.includes('endpoint')) {
+      skillCategories.push('api');
+    }
+    if (content.includes('auth')) {
+      skillCategories.push('auth');
+    }
+    
+    const skills = await SkillLoader.loadSkillsForAgent('backend-agent', skillCategories);
+    logger.info(`${this.role}: Loaded ${skills.length} skills: ${skills.map(s => s.name).join(', ')}`);
+  }
+  
+  /**
+   * Create feature branch for task
+   */
+  async createFeatureBranch(taskId, title) {
+    const branchName = `backend/${taskId}-${(title || 'task').toLowerCase().replace(/\s+/g, '-')}`;
+    
+    logger.info(`${this.role}: Creating branch: ${branchName}`);
+    
+    try {
+      await GitOps.createBranch(branchName);
+      await GitOps.checkoutBranch(branchName);
+      return branchName;
+    } catch (error) {
+      logger.warn(`${this.role}: Could not create branch (may already exist): ${error.message}`);
+      return branchName;
+    }
+  }
+  
+  /**
+   * Get current work status
+   */
+  getStatus() {
+    const status = AgentCollaboration.getAgentStatus('backend-agent');
+    const messages = AgentCollaboration.getMessages('backend-agent', 'sent');
+    
+    return {
+      agent: 'backend-agent',
+      status: status.status,
+      currentBranch: this.currentBranch,
+      unreadMessages: messages.length,
+      ...status.metadata
+    };
+  }
+  
+  /**
+   * Handle handoff from another agent
+   */
+  async handleHandoff(handoffId) {
+    const handoff = await AgentCollaboration.acceptHandoff(handoffId, 'backend-agent');
+    
+    logger.info(`${this.role}: Accepted handoff for task: ${handoff.taskId}`);
+    
+    // Execute the task from handoff
+    const result = await this.executeTask(handoff.context.taskPath);
+    
+    await AgentCollaboration.completeHandoff(handoffId, result);
+    
+    return result;
   }
 }
 

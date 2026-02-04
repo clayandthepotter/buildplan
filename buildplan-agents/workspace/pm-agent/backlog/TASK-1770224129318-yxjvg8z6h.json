@@ -1,0 +1,13 @@
+{
+  "id": "TASK-1770224129318-yxjvg8z6h",
+  "sprintId": "SPRINT-1770224129316",
+  "rdTaskId": "TASK-TEST-1770224129283-RD",
+  "type": "backend",
+  "title": "Implement backend endpoints",
+  "priority": "high",
+  "status": "pending",
+  "assignedAgent": "backend-agent",
+  "createdAt": "2026-02-04T16:55:29.318Z",
+  "dependencies": [],
+  "metadata": {}
+}
