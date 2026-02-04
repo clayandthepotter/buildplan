@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Recent Commits
+- Merge branch 'main' of https://github.com/clayandthepotter/buildplan (00ccf92)
+- docs: Update WARP.md with Phase G completion and system status (24d4cdf)
+- docs: Auto-update CHANGELOG.md [skip ci] (891e279)
+- Merge branch 'main' of https://github.com/clayandthepotter/buildplan (650213a)
+- feat: Complete Phase G - Developer Experience Tools (9aa8db3)
+- docs: Auto-update CHANGELOG.md [skip ci] (da07970)
+- Merge branch 'main' of https://github.com/clayandthepotter/buildplan (a7b0ceb)
+- feat: Complete Phase F - Agent Work Protocol & Collaboration System (1eea4f0)
+- docs: Auto-update CHANGELOG.md [skip ci] (57bab77)
+- [TASK-1770168382786-01] [TASK-1770168382786-01] Implement feature (941f45d)
+- docs: Auto-update CHANGELOG.md [skip ci] (706e2b6)
+- fix: Remove spaces before g flag in regex patterns causing syntax error (c3c95ac)
+- docs: Auto-update CHANGELOG.md [skip ci] (ca2e40c)
+- feat: Add shell execution capabilities to agents for testing and validation (4cd66ef)
+- docs: Auto-update CHANGELOG.md [skip ci] (c680cf9)
+- feat: Add information gathering workflow and /provide command (5e5577f)
+- docs: Auto-update CHANGELOG.md [skip ci] (bd3d5be)
+- feat: Add /modify command to request changes to pending analysis (301ad6c)
+- docs: Auto-update CHANGELOG.md [skip ci] (b59850c)
+- fix: Convert markdown to HTML in PM Agent analysis instead of escaping (eca2bec)
+
+
+### Recent Commits
 - Merge branch 'main' of https://github.com/clayandthepotter/buildplan (650213a)
 - feat: Complete Phase G - Developer Experience Tools (9aa8db3)
 - docs: Auto-update CHANGELOG.md [skip ci] (da07970)
