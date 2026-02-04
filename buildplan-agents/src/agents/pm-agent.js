@@ -56,7 +56,29 @@ Be concise, professional, and proactive.`;
 
   async handleTaskUpdate(taskPath) {
     logger.info(`Task updated: ${taskPath}`);
-    // TODO: Check if task is complete and needs approval
+    
+    try {
+      // Check if task status changed to review
+      const fileName = path.basename(taskPath);
+      const reviewPath = path.join(process.env.TASKS_DIR, 'review', fileName);
+      
+      if (fs.existsSync(reviewPath)) {
+        const content = fileOps.readFile(reviewPath);
+        const titleMatch = content ? content.match(/title:\s*([^\n]+)/) : null;
+        const title = titleMatch ? titleMatch[1].trim() : fileName;
+        
+        await this.notifyTelegram(
+          `👀 <b>Task Ready for Review</b>\n\n` +
+          `Task: <code>${fileName.replace('.md', '')}</code>\n` +
+          `Title: ${title}\n\n` +
+          `Use <code>/approve ${fileName.replace('.md', '')}</code> to approve\n` +
+          `Use <code>/reject ${fileName.replace('.md', '')} [reason]</code> to request changes`,
+          { parse_mode: 'HTML' }
+        );
+      }
+    } catch (error) {
+      logger.error('Error handling task update:', error);
+    }
   }
 
   async runDailyStandup() {
@@ -283,9 +305,34 @@ Be concise, professional, and proactive.`;
     try {
       logger.info(`Rejecting ${taskId}: ${reason}`);
       
-      await this.notifyTelegram(`❌ ${taskId} rejected: ${reason}\n\nTask will be revised.`);
+      // Move task from review back to in-progress
+      const reviewPath = path.join(process.env.TASKS_DIR, 'review', `${taskId}.md`);
+      const inProgressPath = path.join(process.env.TASKS_DIR, 'in-progress', `${taskId}.md`);
       
-      // TODO: Move task back to in-progress with rejection reason
+      if (fs.existsSync(reviewPath)) {
+        // Read task content and append rejection feedback
+        let content = fileOps.readFile(reviewPath) || '';
+        
+        // Add rejection note
+        const rejectionNote = `\n\n---\n## Rejection Feedback\n\n**Rejected by**: ${username}\n**Date**: ${new Date().toISOString()}\n**Reason**: ${reason}\n\n**Status**: Needs revision\n`;
+        content += rejectionNote;
+        
+        // Write updated content to in-progress
+        fileOps.writeFile(inProgressPath, content);
+        
+        // Remove from review
+        fs.unlinkSync(reviewPath);
+        
+        await this.notifyTelegram(
+          `❌ <b>Task Rejected</b>\n\n` +
+          `Task: <code>${taskId}</code>\n` +
+          `Reason: ${reason}\n\n` +
+          `Task moved back to in-progress for revision.`,
+          { parse_mode: 'HTML' }
+        );
+      } else {
+        await this.notifyTelegram(`❌ Could not find task ${taskId} in review`);
+      }
       
     } catch (error) {
       logger.error('Error rejecting task:', error);

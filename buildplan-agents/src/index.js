@@ -93,18 +93,20 @@ class AgentOrchestrator {
     const BackendAgent = require('./agents/backend-agent');
     const ArchitectAgent = require('./agents/architect-agent');
     const RDAgent = require('./agents/rd-agent');
+    const FrontendAgent = require('./agents/frontend-agent');
+    const DevOpsAgent = require('./agents/devops-agent');
+    const QAAgent = require('./agents/qa-agent');
+    const DocsAgent = require('./agents/docs-agent');
     
     this.agents.backend = new BackendAgent(this);
     this.agents.architect = new ArchitectAgent(this);
     this.agents.rd = new RDAgent(this);
+    this.agents.frontend = new FrontendAgent(this);
+    this.agents.devops = new DevOpsAgent(this);
+    this.agents.qa = new QAAgent(this);
+    this.agents.docs = new DocsAgent(this);
     
-    // TODO: Add remaining agents as they're implemented
-    // this.agents.frontend = new FrontendAgent(this);
-    // this.agents.devops = new DevOpsAgent(this);
-    // this.agents.qa = new QAAgent(this);
-    // this.agents.docs = new DocsAgent(this);
-    
-    logger.info('Loaded agents: Backend, Architect, R&D');
+    logger.info('Loaded agents: Backend, Frontend, Architect, DevOps, QA, Docs, R&D');
   }
   
   /**
